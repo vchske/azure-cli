@@ -2,6 +2,64 @@
 
 Release History
 ===============
+
+* webapp, functionapp: az webapp/functionapp deployment list-publishing-credentials, get the Kudu (scm) url and its credentials
+* Remove erroneous print statement for `az webapp auth update`
+* functionapp: fix setting the correct image for runtime in Linux App Service plans
+
+0.2.14
+++++++
+* functionapp: az functionapp devops-build, new command created
+
+0.2.13
+++++++
+* functionapp: add ability to create and configure functions using ACR containers
+* webapp: add support for updating configurations through json
+* appservice plan: Updating help for appservice-plan-update command
+* functionapp: add support for app insights on functionapp create
+* webapp: bugfixes for webapp ssh
+
+0.2.12
+++++++
+* functionapp: add support for app insights on functionapp create
+* functionapp: add support for app service plan creation (including Elastic Premium)
+* functionapp: fix app setting issues with Elastic Premium plans
+
+0.2.11
+++++++
+* webapp: az webapp config ssl upload, handling the scenario of uploading certificates on apps that are hosted on an ASE, where the ASE RG & App RG are different
+* webapp: az webapp up --sku defaults to P1V1 if the os is linux
+* webapp, functionapp: webapp deployment source config-zip, fixed to show the right error message when a deployment fails 
+* webapp: add az webapp ssh
+
+0.2.10
+++++++
+* webapp: az webapp up reliability fixes, where using the command to redeploy code to a newly created app using the same command was failing
+* webapp: add support for listing and restoring webapp snapshots
+* functionapp: add support for --runtime flag in windows function apps
+
+0.2.9
++++++
+* webapp: az webapp config container now honors --slot parameter
+
+0.2.8
++++++
+* webapp: adding support for az webapp up command (Preview) that helps in creating & deploying contents to app
+* webapp: fix a bug on container based windows app due to backend change
+
+
+0.2.7
++++++
+* webapp, functionapp: Zip deployment default timeout to poll for the status increased to 5 mins, also adding a timeout property to customize this value
+* webapp, functionapp: Default Node_version updated. Resetting slot swap action, during a two phase swap preserves all the appsettings & connection strings
+* remove client side sku check for linux app service plan create
+* minor fix to avoid key errors when trying to get zipdeploy status
+
+0.2.6
++++++
+* update ACR SDK
+* webapp: fix a bug in `az webapp config backup update` that prevents setting a backup schedule if one is not already set
+
 0.2.5
 +++++
 * az functionapp create supports creating a linux consumption plan type with a specific runtime

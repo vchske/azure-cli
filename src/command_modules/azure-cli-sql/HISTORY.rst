@@ -2,6 +2,21 @@
 
 Release History
 ===============
+2.1.9
++++++
+* Minor fixes
+
+2.1.8
++++++
+* Minor fixes
+
+2.1.7
++++++
+* Updating dependencies
+
+2.1.6
++++++
+* Support for custom collation on managed instance.
 
 2.1.5
 +++++

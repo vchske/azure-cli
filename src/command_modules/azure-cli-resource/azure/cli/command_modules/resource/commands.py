@@ -52,37 +52,37 @@ def load_command_table(self, _):
     resource_custom = CliCommandType(operations_tmpl='azure.cli.command_modules.resource.custom#{}')
 
     resource_group_sdk = CliCommandType(
-        operations_tmpl='azure.mgmt.resource.resources.operations.resource_groups_operations#ResourceGroupsOperations.{}',
+        operations_tmpl='azure.mgmt.resource.resources.operations#ResourceGroupsOperations.{}',
         client_factory=cf_resource_groups,
         resource_type=ResourceType.MGMT_RESOURCE_RESOURCES
     )
 
     resource_provider_sdk = CliCommandType(
-        operations_tmpl='azure.mgmt.resource.resources.operations.providers_operations#ProvidersOperations.{}',
+        operations_tmpl='azure.mgmt.resource.resources.operations#ProvidersOperations.{}',
         client_factory=cf_providers,
         resource_type=ResourceType.MGMT_RESOURCE_RESOURCES
     )
 
     resource_feature_sdk = CliCommandType(
-        operations_tmpl='azure.mgmt.resource.features.operations.features_operations#FeaturesOperations.{}',
+        operations_tmpl='azure.mgmt.resource.features.operations#FeaturesOperations.{}',
         client_factory=cf_features,
         resource_type=ResourceType.MGMT_RESOURCE_FEATURES
     )
 
     resource_tag_sdk = CliCommandType(
-        operations_tmpl='azure.mgmt.resource.resources.operations.tags_operations#TagsOperations.{}',
+        operations_tmpl='azure.mgmt.resource.resources.operations#TagsOperations.{}',
         client_factory=cf_tags,
         resource_type=ResourceType.MGMT_RESOURCE_RESOURCES
     )
 
     resource_deployment_sdk = CliCommandType(
-        operations_tmpl='azure.mgmt.resource.resources.operations.deployments_operations#DeploymentsOperations.{}',
+        operations_tmpl='azure.mgmt.resource.resources.operations#DeploymentsOperations.{}',
         client_factory=cf_deployments,
         resource_type=ResourceType.MGMT_RESOURCE_RESOURCES
     )
 
     resource_deployment_operation_sdk = CliCommandType(
-        operations_tmpl='azure.mgmt.resource.resources.operations.deployment_operations#DeploymentOperations.{}',
+        operations_tmpl='azure.mgmt.resource.resources.operations#DeploymentOperations.{}',
         client_factory=cf_deployment_operations,
         resource_type=ResourceType.MGMT_RESOURCE_RESOURCES
     )
@@ -122,13 +122,13 @@ def load_command_table(self, _):
     )
 
     resource_managementgroups_sdk = CliCommandType(
-        operations_tmpl='azure.mgmt.managementgroups.operations.management_groups_operations#ManagementGroupsOperations.{}',
+        operations_tmpl='azure.mgmt.managementgroups.operations#ManagementGroupsOperations.{}',
         client_factory=cf_management_groups,
         exception_handler=managementgroups_exception_handler
     )
 
     resource_managementgroups_subscriptions_sdk = CliCommandType(
-        operations_tmpl='azure.mgmt.managementgroups.operations.management_group_subscriptions_operations#ManagementGroupSubscriptionsOperations.{}',
+        operations_tmpl='azure.mgmt.managementgroups.operations#ManagementGroupSubscriptionsOperations.{}',
         client_factory=cf_management_group_subscriptions,
         exception_handler=managementgroups_exception_handler
     )
@@ -173,6 +173,7 @@ def load_command_table(self, _):
         g.custom_command('invoke-action', 'invoke_resource_action')
         g.generic_update_command('update', getter_name='show_resource', setter_name='update_resource',
                                  client_factory=None)
+        g.wait_command('wait', getter_name='show_resource')
 
     with self.command_group('resource lock', resource_type=ResourceType.MGMT_RESOURCE_LOCKS) as g:
         g.custom_command('create', 'create_lock')
@@ -239,17 +240,22 @@ def load_command_table(self, _):
         g.custom_command('list', 'list_policy_assignment')
         g.custom_show_command('show', 'show_policy_assignment')
 
+    with self.command_group('policy assignment identity', resource_type=ResourceType.MGMT_RESOURCE_POLICY, min_api='2018-05-01') as g:
+        g.custom_command('assign', 'set_identity')
+        g.custom_show_command('show', 'show_identity')
+        g.custom_command('remove', 'remove_identity')
+
     with self.command_group('policy definition', resource_policy_definitions_sdk, resource_type=ResourceType.MGMT_RESOURCE_POLICY) as g:
         g.custom_command('create', 'create_policy_definition')
-        g.command('delete', 'delete')
-        g.command('list', 'list')
+        g.custom_command('delete', 'delete_policy_definition')
+        g.custom_command('list', 'list_policy_definition')
         g.custom_show_command('show', 'get_policy_definition')
-        g.generic_update_command('update', custom_func_name='update_policy_definition', custom_func_type=resource_custom)
+        g.custom_command('update', 'update_policy_definition')
 
     with self.command_group('policy set-definition', resource_policy_set_definitions_sdk, resource_type=ResourceType.MGMT_RESOURCE_POLICY, min_api='2017-06-01-preview') as g:
         g.custom_command('create', 'create_policy_setdefinition')
-        g.command('delete', 'delete')
-        g.command('list', 'list')
+        g.custom_command('delete', 'delete_policy_setdefinition')
+        g.custom_command('list', 'list_policy_setdefinition')
         g.custom_show_command('show', 'get_policy_setdefinition')
         g.custom_command('update', 'update_policy_setdefinition')
 

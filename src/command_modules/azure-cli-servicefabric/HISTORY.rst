@@ -2,6 +2,37 @@
 
 Release History
 ===============
+
+* sf cluster list: Fix issue 'ClusterListResult is not iterable.
+
+0.1.13
+++++++
+* Minor fixes.
+
+0.1.12
+++++++
+* Minor fixes
+
+0.1.11
+++++++
+* Updated dependencies.
+
+0.1.10
+++++++
+* Minor fixes
+
+0.1.9
++++++
+* Minor fixes
+
+0.1.8
++++++
+* Minor fixes
+
+0.1.7
++++++
+* Minor fixes
+
 0.1.6
 +++++
 * Minor fixes

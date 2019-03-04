@@ -103,7 +103,7 @@ os_dic = {'WindowsServer2012R2Datacenter': '2012-R2-Datacenter',
 def list_cluster(client, resource_group_name=None):
     cluster_list = client.list_by_resource_group(resource_group_name=resource_group_name) \
         if resource_group_name else client.list()
-    return list(cluster_list)
+    return cluster_list
 
 
 # pylint:disable=too-many-locals, too-many-statements, too-many-boolean-expressions, too-many-branches
@@ -1692,7 +1692,7 @@ def _create_keyvault(cmd,
 # pylint: disable=inconsistent-return-statements
 def _get_current_user_object_id(graph_client):
     try:
-        current_user = graph_client.objects.get_current_user()
+        current_user = graph_client.signed_in_user.get()
         if current_user and current_user.object_id:  # pylint:disable=no-member
             return current_user.object_id  # pylint:disable=no-member
     except CloudError:

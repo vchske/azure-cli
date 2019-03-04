@@ -7,7 +7,7 @@
 
 from knack.arguments import CLIArgumentType
 
-from azure.cli.core.commands.parameters import get_enum_type, get_three_state_flag
+from azure.cli.core.commands.parameters import get_enum_type, get_three_state_flag, get_location_type, tags_type
 from azure.cli.core.commands.validators import validate_file_or_dict
 
 from azure.cli.command_modules.role._completers import get_role_definition_name_completion_list
@@ -21,6 +21,9 @@ def load_arguments(self, _):
     with self.argument_context('ad') as c:
         c.argument('_subscription')  # hide global subscription param
         c.argument('owner_object_id', help="owner's object id")
+        c.argument('show_mine', action='store_true', help='list entities owned by the current user')
+        c.argument('include_all', options_list='--all', action='store_true',
+                   help='list all entities, expect long delay if under a big organization')
 
     with self.argument_context('ad app') as c:
         c.argument('app_id', help='application id')
@@ -41,14 +44,19 @@ def load_arguments(self, _):
         c.argument('oauth2_allow_implicit_flow', arg_type=get_three_state_flag(), help='whether to allow implicit grant flow for OAuth2')
         c.argument('required_resource_accesses', type=validate_file_or_dict,
                    help="resource scopes and roles the application requires access to. Should be in manifest json format. See examples below for details")
+        c.argument('app_roles', type=validate_file_or_dict,
+                   help="declare the roles you want to associate with your application. Should be in manifest json format. See examples below for details")
         c.argument('native_app', arg_type=get_three_state_flag(), help="an application which can be installed on a user's device or computer")
+        c.argument('credential_description', help="the description of the password")
 
     with self.argument_context('ad app owner list') as c:
         c.argument('identifier', options_list=['--id'], help='identifier uri, application id, or object id of the application')
 
-    with self.argument_context('ad app permission grant') as c:
-        c.argument('app_id', help='clientId of an existing app from which you want to grant permissions to your app')
-        c.argument('expires', help='Expiry date for the permissions in years, options include 1, 2 or never.')
+    with self.argument_context('ad app permission') as c:
+        c.argument('api_permissions', nargs='+', help='space seperated list of <resource-access-id>=<type>')
+        c.argument('expires', help='Expiry date for the permissions in years. e.g. 1, 2 or "never"')
+        c.argument('scope', help='oauth scope')
+        c.argument('api', help='the target API to access')
 
     with self.argument_context('ad app permission list') as c:
         c.argument('identifier', options_list=['--id'], help='identifier uri, application id, or object id of the associated application')
@@ -62,7 +70,8 @@ def load_arguments(self, _):
     with self.argument_context('ad sp create-for-rbac') as c:
         c.argument('scopes', nargs='+')
         c.argument('role', completer=get_role_definition_name_completion_list)
-        c.argument('skip_assignment', arg_type=get_three_state_flag(), help='do not create default assignment')
+        c.argument('skip_assignment', arg_type=get_three_state_flag(),
+                   help='Skip creating the default assignment, which allows the service principal to access resources under the current subscription')
         c.argument('show_auth_for_sdk', options_list='--sdk-auth', help='output result in compatible with Azure SDK auth file', arg_type=get_three_state_flag())
 
     with self.argument_context('ad sp owner list') as c:
@@ -72,14 +81,31 @@ def load_arguments(self, _):
         with self.argument_context('ad sp {}'.format(item)) as c:
             c.argument('name', name_arg_type)
             c.argument('cert', arg_group='Credential', validator=validate_cert)
-            c.argument('password', options_list=['--password', '-p'], arg_group='Credential')
             c.argument('years', type=int, default=None, arg_group='Credential')
             c.argument('create_cert', action='store_true', arg_group='Credential')
             c.argument('keyvault', arg_group='Credential')
             c.argument('append', action='store_true', help='Append the new credential instead of overwriting.')
+            c.argument('credential_description', help="the description of the password", arg_group='Credential')
 
-    for item in ['delete', 'list']:
-        with self.argument_context('ad sp credential {}'.format(item)) as c:
+    with self.argument_context('ad sp create-for-rbac') as c:
+        c.argument('password', options_list=['--password', '-p'], arg_group='Credential',
+                   deprecate_info=c.deprecate(expiration='2.1.0', hide=False), help="If missing, CLI will generate a strong password")
+
+    with self.argument_context('ad sp credential reset') as c:
+        c.argument('password', options_list=['--password', '-p'], arg_group='Credential',
+                   help="If missing, CLI will generate a strong password")
+
+    with self.argument_context('ad app credential reset') as c:
+        c.argument('name', options_list=['--id'], help='identifier uri, application id, or object id')
+        c.argument('cert', arg_group='Credential', validator=validate_cert, help='Certificate to use for credentials')
+        c.argument('password', options_list=['--password', '-p'], arg_group='Credential')
+        c.argument('years', type=int, default=None, arg_group='Credential', help='Number of years for which the credentials will be valid')
+        c.argument('create_cert', action='store_true', arg_group='Credential', help='Create a self-signed certificate to use for the credential')
+        c.argument('keyvault', arg_group='Credential', help='Name or ID of a KeyVault to use for creating or retrieving certificates.')
+        c.argument('append', action='store_true', help='Append the new credential instead of overwriting.')
+
+    for item in ['ad sp credential delete', 'ad sp credential list', 'ad app credential delete', 'ad app credential list']:
+        with self.argument_context(item) as c:
             c.argument('key_id', help='credential key id')
             c.argument('cert', action='store_true', help='a certificate based credential')
 
@@ -104,6 +130,9 @@ def load_arguments(self, _):
         for arg in VARIANT_GROUP_ID_ARGS:
             c.argument(arg, options_list=['--group', '-g'], validator=validate_group, help=group_help_msg)
 
+    with self.argument_context('ad group create') as c:
+        c.argument('mail_nickname', help='Mail nickname')
+
     with self.argument_context('ad group show') as c:
         c.extra('cmd')
 
@@ -121,6 +150,9 @@ def load_arguments(self, _):
 
     with self.argument_context('ad group member') as c:
         c.argument('member_object_id', options_list='--member-id', help=member_id_help_msg)
+
+    with self.argument_context('ad signed-in-user') as c:
+        c.argument('object_type', options_list=['--type', '-t'], help='object type filter, e.g. "application", "servicePrincipal"  "group", etc')
 
     with self.argument_context('role') as c:
         c.argument('scope', help='scope at which the role assignment or definition applies to, e.g., /subscriptions/0b1f6471-1bf0-4dda-aec3-111122223333, /subscriptions/0b1f6471-1bf0-4dda-aec3-111122223333/resourceGroups/myGroup, or /subscriptions/0b1f6471-1bf0-4dda-aec3-111122223333/resourceGroups/myGroup/providers/Microsoft.Compute/virtualMachines/myVM')
@@ -147,3 +179,10 @@ def load_arguments(self, _):
         c.argument('custom_role_only', arg_type=get_three_state_flag(), help='custom roles only(vs. build-in ones)')
         c.argument('role_definition', help="json formatted content which defines the new role.")
         c.argument('name', arg_type=name_arg_type, completer=get_role_definition_name_completion_list, help="the role's name")
+
+    with self.argument_context('identity') as c:
+        c.argument('resource_name', arg_type=name_arg_type, id_part='name')
+
+    with self.argument_context('identity create') as c:
+        c.argument('location', get_location_type(self.cli_ctx))
+        c.argument('tags', tags_type)

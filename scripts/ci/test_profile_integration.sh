@@ -10,9 +10,11 @@ pip install -e ./tools
 [ -d privates ] && pip install -qqq privates/*.whl
 pip install $ALL_MODULES
 
-set -e
+set -ev
 
 output=$(az cloud list-profiles -otsv)
+
+azdev verify package $share_folder/build/
 
 for profile in $output; do
     echo

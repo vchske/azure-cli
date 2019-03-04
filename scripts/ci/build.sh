@@ -3,7 +3,7 @@
 # Build wheel packages containing both CLI product and tests. The script doesn't rely on a pre-existing virtual
 # environment.
 
-set -e
+set -ev
 
 ##############################################
 # clean up and dir search
@@ -157,6 +157,7 @@ cat >>$testsrc_dir/setup.py <<EOL
                        '*.txt',
                        '*.cer',
                        '*.yml',
+                       '*.xml',
                        '**/*.cer',
                        '**/*.pem',
                        '**/*.pfx',
@@ -166,7 +167,8 @@ cat >>$testsrc_dir/setup.py <<EOL
                        '**/*.js',
                        '**/*.md',
                        '**/*.bat',
-                       '**/*.txt']},
+                       '**/*.txt',
+                       '**/*.xml']},
     install_requires=DEPENDENCIES
 )
 EOL

@@ -90,11 +90,6 @@ helps['network application-gateway stop'] = """
 helps['network application-gateway update'] = """
     type: command
     short-summary: Update an application gateway.
-    examples:
-        - name: Update an application gateway to use additional servers.
-          text: |
-            az network application-gateway update -g MyResourceGroup -n MyAppGateway \\
-                --capacity 3 --servers 10.0.0.4 10.0.0.5 10.0.0.6
 """
 
 helps['network application-gateway wait'] = """
@@ -686,8 +681,46 @@ helps['network application-gateway ssl-policy predefined show'] = """
         - name: Gets SSL predefined policy with the specified policy name.
           text: az network application-gateway ssl-policy predefined show -n AppGwSslPolicy20170401
 """
+# endregion
 
+# region Application Gateway Trusted Root Certs
+helps['network application-gateway root-cert'] = """
+    type: group
+    short-summary: Manage trusted root certificates of an application gateway.
+"""
+helps['network application-gateway root-cert create'] = """
+    type: command
+    short-summary: Upload a trusted root certificate.
+"""
 
+helps['network application-gateway root-cert delete'] = """
+    type: command
+    short-summary: Delete a trusted root certificate.
+    examples:
+        - name: Delete a trusted root certificate.
+          text: az network application-gateway root-cert delete -g MyResourceGroup --gateway-name MyAppGateway -n MyRootCert
+"""
+
+helps['network application-gateway root-cert list'] = """
+    type: command
+    short-summary: List trusted root certificates.
+    examples:
+        - name: List trusted root certificates.
+          text: az network application-gateway root-cert list -g MyResourceGroup --gateway-name MyAppGateway
+"""
+
+helps['network application-gateway root-cert show'] = """
+    type: command
+    short-summary: Get the details of a trusted root certificate.
+    examples:
+        - name: Get the details of a trusted root certificate.
+          text: az network application-gateway root-cert show -g MyResourceGroup --gateway-name MyAppGateway -n MyRootCert
+"""
+
+helps['network application-gateway root-cert update'] = """
+    type: command
+    short-summary: Update a trusted root certificate.
+"""
 # endregion
 
 # region Application Gateway URL path map
@@ -741,7 +774,7 @@ helps['network application-gateway url-path-map update'] = """
         - name: Update a URL path map to use new default HTTP settings.
           text: |
             az network application-gateway url-path-map update -g MyResourceGroup --gateway-name MyAppGateway \\
-                -n MyUrlPathMap --http-settings MyNewHttpSettings --default-http-settings MyNewHttpSettings
+                -n MyUrlPathMap --default-http-settings MyNewHttpSettings
 """
 # endregion
 
@@ -827,16 +860,29 @@ helps['network application-gateway waf-config set'] = """
           short-summary: Space-separated list of rule IDs to disable.
           populator-commands:
           - az network application-gateway waf-config list-rule-sets
+        - name: --exclusion
+          short-summary: Add an exclusion expression to the WAF check.
+          long-summary: |
+            Usage:   --exclusion VARIABLE OPERATOR VALUE
+
+            Multiple exclusions can be specified by using more than one `--exclusion` argument.
     examples:
         - name: Configure WAF on an application gateway in detection mode with default values
           text: |
-            az network application-gateway waf-config set -g MyResourceGroup -n MyAppGateway \\
+            az network application-gateway waf-config set -g MyResourceGroup --gateway-name MyAppGateway \\
                 --enabled true --firewall-mode Detection --rule-set-version 3.0
         - name: Disable rules for validation of request body parsing and SQL injection.
           text: |
-            az network application-gateway waf-config set -g MyResourceGroup -n MyAppGateway \\
+            az network application-gateway waf-config set -g MyResourceGroup --gateway-name MyAppGateway \\
                 --enabled true --rule-set-type OWASP --rule-set-version 3.0 \\
-                --disabled-rules 920130 920140 --disabled-rule-groups REQUEST-942-APPLICATION-ATTACK-SQLI
+                --disabled-rule-groups REQUEST-942-APPLICATION-ATTACK-SQLI \\
+                --disabled-rules 920130 920140
+        - name: Configure WAF on an application gateway with exclusions.
+          text: |
+            az network application-gateway waf-config set -g MyResourceGroup --gateway-name MyAppGateway \\
+                --enabled true --firewall-mode Detection --rule-set-version 3.0 \\
+                --exclusion "RequestHeaderNames StartsWith x-header" \\
+                --exclusion "RequestArgNames Equals IgnoreThis"
 """
 
 helps['network application-gateway waf-config show'] = """
@@ -1494,7 +1540,7 @@ helps['network dns record-set srv add-record'] = """
         - name: Add an SRV record.
           text: |
             az network dns record-set srv add-record -g MyResourceGroup -z www.mysite.com \\
-                -n MyRecordSet -d another.site.com
+                -n MyRecordSet -t webserver.mysite.com -r 8081 -p 10 -w 10
 """
 
 helps['network dns record-set srv create'] = """
@@ -1504,7 +1550,7 @@ helps['network dns record-set srv create'] = """
         - name: Create an empty SRV record set.
           text: |
             az network dns record-set srv create -g MyResourceGroup -z www.mysite.com \\
-                -n MyRecordSet -t webserver.mysite.com -r 8081 -p 10 -w 10
+                -n MyRecordSet
 """
 
 helps['network dns record-set srv delete'] = """
@@ -1684,9 +1730,9 @@ helps['network dns zone export'] = """
     type: command
     short-summary: Export a DNS zone as a DNS zone file.
     examples:
-        - name: Export a DNS zone as a DNS zone file in tsv format.
+        - name: Export a DNS zone as a DNS zone file.
           text: >
-            az network dns zone export -g MyResourceGroup -n www.mysite.com -o mysite_com_zone.tsv
+            az network dns zone export -g MyResourceGroup -n www.mysite.com -f mysite_com_zone.txt
 """
 
 helps['network dns zone import'] = """
@@ -1753,9 +1799,9 @@ helps['network express-route create'] = """
           - az network express-route list-service-providers
     examples:
         - name: Create an ExpressRoute circuit.
-          text: |
-            az network express-route create --bandwidth 200 -n MyCircuit --peering-location "Silicon Valley" \\
-                -g --provider "Equinix" -l "West US" --sku-family MeteredData --sku-tier Standard
+          text: >
+            az network express-route create --bandwidth 200 -n MyCircuit --peering-location "Silicon Valley"
+            -g MyResourceGroup --provider "Equinix" -l "West US" --sku-family MeteredData --sku-tier Standard
 """
 
 helps['network express-route delete'] = """
@@ -1836,7 +1882,7 @@ helps['network express-route wait'] = """
     short-summary: Place the CLI in a waiting state until a condition of the ExpressRoute is met.
     examples:
         - name: Pause executing next line of CLI script until the ExpressRoute circuit is successfully provisioned.
-          text: az network express-route wait -n MyCircuit --g MyResourceGroup --created
+          text: az network express-route wait -n MyCircuit -g MyResourceGroup --created
 """
 # endregion
 
@@ -1883,6 +1929,87 @@ helps['network express-route auth show'] = """
         - name: Get the details of a link authorization of an ExpressRoute circuit.
           text: >
             az network express-route auth show -g MyResourceGroup --circuit-name MyCircuit -n MyAuthorization
+"""
+# endregion
+
+# region Express Route Gateway
+helps['network express-route gateway'] = """
+    type: group
+    short-summary: Manage ExpressRoute gateways.
+"""
+
+helps['network express-route gateway create'] = """
+    type: command
+    short-summary: Create an ExpressRoute gateway.
+"""
+
+helps['network express-route gateway delete'] = """
+    type: command
+    short-summary: Delete an ExpressRoute gateway.
+"""
+
+helps['network express-route gateway list'] = """
+    type: command
+    short-summary: List ExpressRoute gateways.
+"""
+
+helps['network express-route gateway show'] = """
+    type: command
+    short-summary: Get the details of an ExpressRoute gateway.
+"""
+
+helps['network express-route gateway update'] = """
+    type: command
+    short-summary: Update settings of an ExpressRoute gateway.
+"""
+# endregion
+
+# region Express Route gateway connection
+helps['network express-route gateway connection'] = """
+    type: group
+    short-summary: Manage ExpressRoute gateway connections.
+"""
+
+helps['network express-route gateway connection create'] = """
+    type: command
+    short-summary: Create an ExpressRoute gateway connection.
+"""
+
+helps['network express-route gateway connection delete'] = """
+    type: command
+    short-summary: Delete an ExpressRoute gateway connection.
+"""
+
+helps['network express-route gateway connection list'] = """
+    type: command
+    short-summary: List ExpressRoute gateway connections.
+"""
+
+helps['network express-route gateway connection show'] = """
+    type: command
+    short-summary: Get the details of an ExpressRoute gateway connection.
+"""
+
+helps['network express-route gateway connection update'] = """
+    type: command
+    short-summary: Update an ExpressRoute gateway connection.
+"""
+# endregion
+
+# region Express Route Link
+helps['network express-route port link'] = """
+    type: group
+    short-summary: View ExpressRoute links.
+"""
+
+helps['network express-route port link list'] = """
+    type: command
+    short-summary: List ExpressRoute links.
+"""
+
+helps['network express-route port link show'] = """
+    type: command
+    short-summary: Get the details of an ExpressRoute link.
 """
 # endregion
 
@@ -1937,10 +2064,9 @@ helps['network express-route peering update'] = """
     examples:
         - name: Add IPv6 Microsoft Peering settings to existing IPv4 config.
           text: |
-            az network express-route peering update -g MyResourceGroup \\
-                --circuit-name MyCircuit --peering-type MicrosoftPeering --ip-version ipv6 \\
-                --primary-peer-subnet 2002:db00::/126 --secondary-peer-subnet 2003:db00::/126 \\
-                --advertised-public-prefixes 2002:db00::/126
+            az network express-route peering update -g MyResourceGroup --circuit-name MyCircuit \\
+                --ip-version ipv6 --primary-peer-subnet 2002:db00::/126 \\
+                --secondary-peer-subnet 2003:db00::/126 --advertised-public-prefixes 2002:db00::/126
           min_profile: latest
 """
 
@@ -1971,21 +2097,60 @@ helps['network express-route peering connection show'] = """
 """
 # endregion
 
+# region Express Route Port
+helps['network express-route port'] = """
+    type: group
+    short-summary: Manage ExpressRoute ports.
+"""
+
+helps['network express-route port create'] = """
+    type: command
+    short-summary: Create an ExpressRoute port.
+"""
+
+helps['network express-route port delete'] = """
+    type: command
+    short-summary: Delete an ExpressRoute port.
+"""
+
+helps['network express-route port list'] = """
+    type: command
+    short-summary: List ExpressRoute ports.
+"""
+
+helps['network express-route port show'] = """
+    type: command
+    short-summary: Get the details of an ExpressRoute port.
+"""
+
+helps['network express-route port update'] = """
+    type: command
+    short-summary: Update settings of an ExpressRoute port.
+"""
+# endregion
+
+# region Express Route Port Locations
+helps['network express-route port location'] = """
+    type: group
+    short-summary: View ExpressRoute port location information.
+"""
+
+helps['network express-route port location list'] = """
+    type: command
+    short-summary: List ExpressRoute port locations.
+"""
+
+helps['network express-route port location show'] = """
+    type: command
+    short-summary: Get the details of an ExpressRoute port location.
+"""
+# endregion
+
 # region Interface Endpoint
 helps['network interface-endpoint'] = """
     type: group
     short-summary: Manage interface endpoints.
 """
-
-# helps['network interface-endpoint create'] = """
-#    type: command
-#    short-summary: Create an interface endpoint.
-# """
-
-# helps['network interface-endpoint delete'] = """
-#    type: command
-#    short-summary: Delete an interface endpoint.
-# """
 
 helps['network interface-endpoint list'] = """
     type: command
@@ -1996,12 +2161,26 @@ helps['network interface-endpoint show'] = """
     type: command
     short-summary: Get the details of an interface endpoint.
 """
-
-# helps['network interface-endpoint update'] = """
-#    type: command
-#    short-summary: Update an interface endpoint.
-# """
 # endregion
+
+# region Private Endpoint
+helps['network private-endpoint'] = """
+    type: group
+    short-summary: Manage private endpoints.
+"""
+
+
+helps['network private-endpoint list'] = """
+    type: command
+    short-summary: List private endpoints.
+"""
+
+helps['network private-endpoint show'] = """
+    type: command
+    short-summary: Get the details of an private endpoint.
+"""
+# endregion
+
 
 # region Load Balancer
 helps['network lb'] = """
@@ -2115,11 +2294,11 @@ helps['network lb frontend-ip create'] = """
     short-summary: Create a frontend IP address.
     examples:
         - name: Create a frontend ip address for a public load balancer.
-          text: az network lb frontend-ip create -g MyResourceGroup -n MyFrontendIp --lb-name MyLb --public-ip-name MyFrontendIp
+          text: az network lb frontend-ip create -g MyResourceGroup -n MyFrontendIp --lb-name MyLb --public-ip-address MyFrontendIp
         - name: Create a frontend ip address for an internal load balancer.
           text: |
             az network lb frontend-ip create -g MyResourceGroup -n MyFrontendIp --lb-name MyLb \\
-                --private-ip-address 10.10.10.100 --subnet-name MySubnet --subnet-vnet-name MyVnet
+                --private-ip-address 10.10.10.100 --subnet MySubnet --vnet-name MyVnet
 """
 
 helps['network lb frontend-ip delete'] = """
@@ -2151,7 +2330,7 @@ helps['network lb frontend-ip update'] = """
     short-summary: Update a frontend IP address.
     examples:
         - name: Update the frontend IP address of a public load balancer.
-          text: az network lb frontend-ip update -g MyResourceGroup --lb-name MyLb -n MyFrontendIp --public-ip-name MyNewPublicIp
+          text: az network lb frontend-ip update -g MyResourceGroup --lb-name MyLb -n MyFrontendIp --public-ip-address MyNewPublicIp
         - name: Update the frontend IP address of an internal load balancer.
           text: az network lb frontend-ip update -g MyResourceGroup --lb-name MyLb -n MyFrontendIp --private-ip-address 10.10.10.50
 """
@@ -2371,8 +2550,8 @@ helps['network lb rule create'] = """
             an address pool and port with the floating ip feature.
           text: |
             az network lb rule create -g MyResourceGroup --lb-name MyLb -n MyLbRule --protocol Tcp \\
-                --frontend-ip-name MyFrontEndIp --backend-pool-name MyAddressPool --backend-port 80 \\
-                --floating-ip true
+                --frontend-ip-name MyFrontEndIp --backend-pool-name MyAddressPool  \\
+                --floating-ip true --frontend-port 80 --backend-port 80
         - name: >
             Create an HA ports load balancing rule that assigns a frontend IP and port to use all
             available backend IPs in a pool on the same port.
@@ -2528,7 +2707,7 @@ helps['network nic list'] = """
     examples:
         - name: List all NICs by internal DNS suffix.
           text: >
-            az network nic list --query "[?dnsSettings.internalDomainNameSuffix=--query "[?dnsSettings.internalDomainNameSuffix==`<dns_suffix>`]"
+            az network nic list --query "[?dnsSettings.internalDomainNameSuffix=`{dnsSuffix}`]"
 """
 
 helps['network nic list-effective-nsg'] = """
@@ -2647,7 +2826,7 @@ helps['network nic ip-config address-pool add'] = """
         - name: Add an address pool to an IP configuration.
           text: |
             az network nic ip-config address-pool add -g MyResourceGroup --nic-name MyNic \\
-                -n MyIpConfig --address-poolMyAddressPool
+                -n MyIpConfig --address-pool MyAddressPool
 """
 
 helps['network nic ip-config address-pool remove'] = """
@@ -2991,7 +3170,7 @@ helps['network route-table route delete'] = """
     short-summary: Delete a route from a route table.
     examples:
         - name: Delete a route from a route table.
-          text: az network route-table route delete -g MyResourceGroup ---route-table-name MyRouteTable -n MyRoute
+          text: az network route-table route delete -g MyResourceGroup --route-table-name MyRouteTable -n MyRoute
 """
 
 helps['network route-table route list'] = """
@@ -2999,7 +3178,7 @@ helps['network route-table route list'] = """
     short-summary: List routes in a route table.
     examples:
         - name: List routes in a route table.
-          text: az network route-table route list -g MyResourceGroup ---route-table-name MyRouteTable
+          text: az network route-table route list -g MyResourceGroup --route-table-name MyRouteTable
 """
 
 helps['network route-table route show'] = """
@@ -3007,7 +3186,7 @@ helps['network route-table route show'] = """
     short-summary: Get the details of a route in a route table.
     examples:
         - name: Get the details of a route in a route table.
-          text: az network route-table route show -g MyResourceGroup ---route-table-name MyRouteTable -n MyRoute -o table
+          text: az network route-table route show -g MyResourceGroup --route-table-name MyRouteTable -n MyRoute -o table
 """
 
 helps['network route-table route update'] = """
@@ -3015,7 +3194,7 @@ helps['network route-table route update'] = """
     short-summary: Update a route in a route table.
     examples:
         - name: Update a route in a route table to change the next hop ip address.
-          text: az network route-table route update -g MyResourceGroup ---route-table-name MyRouteTable \\
+          text: az network route-table route update -g MyResourceGroup --route-table-name MyRouteTable \\
                     -n MyRoute --next-hop-ip-address 10.0.100.5
 """
 # endregion
@@ -3498,7 +3677,7 @@ helps['network vnet peering create'] = """
         - name: Create a peering connection between two virtual networks.
           text: |
             az network vnet peering create -g MyResourceGroup -n MyVnet1ToMyVnet2 --vnet-name MyVnet1 \\
-                --remote-vnet-id MyVnet2Id --allow-vnet-access
+                --remote-vnet MyVnet2Id --allow-vnet-access
 """
 
 helps['network vnet peering delete'] = """
@@ -3558,12 +3737,26 @@ helps['network vpn-connection create'] = """
     type: command
     short-summary: Create a VPN connection.
     long-summary: The VPN Gateway and Local Network Gateway must be provisioned before creating the connection between them.
+    parameters:
+      - name: --vnet-gateway1
+        short-summary: Name or ID of the source virtual network gateway.
+      - name: --vnet-gateway2
+        short-summary: Name or ID of the destination virtual network gateway to connect to using a 'Vnet2Vnet' connection.
+      - name: --local-gateway2
+        short-summary: Name or ID of the destination local network gateway to connect to using an 'IPSec' connection.
+      - name: --express-route-circuit2
+        short-summary: Name or ID of the destination ExpressRoute to connect to using an 'ExpressRoute' connection.
+      - name: --authorization-key
+        short-summary: The authorization key for the VPN connection.
+      - name: --enable-bgp
+        short-summary: Enable BGP for this VPN connection.
+      - name: --validate
+        short-summary: Display and validate the ARM template but do not create any resources.
     examples:
         - name: >
             Create a site-to-site connection between an Azure virtual network and an on-premises local network gateway.
-          text: |
-            az network vpn-connection create -g MyResourceGroup -n MyConnection --vnet-gateway1 MyVnetGateway \\
-                -local-gateway2 MyLocalGateway --shared-key Abc123
+          text: >
+            az network vpn-connection create -g MyResourceGroup -n MyConnection --vnet-gateway1 MyVnetGateway --local-gateway2 MyLocalGateway --shared-key Abc123
 """
 
 helps['network vpn-connection delete'] = """
@@ -3768,6 +3961,40 @@ helps['network vnet-gateway wait'] = """
           text: az network vnet-gateway wait -g MyResourceGroup -n MyVnetGateway --created
 """
 # endregion
+
+# region VNet Gateway IPSec Policy
+helps['network vnet-gateway ipsec-policy'] = """
+    type: group
+    short-summary: Manage virtual network gateway IPSec policies.
+"""
+
+helps['network vnet-gateway ipsec-policy add'] = """
+    type: command
+    short-summary: Add a virtual network gateway IPSec policy.
+    long-summary: Set all IPsec policies of a virtual network gateway. If you want to set any IPsec policy, you must set them all.
+    examples:
+        - name: Add specified IPsec policies to a gateway instead of relying on defaults.
+          text: |
+            az network vnet-gateway ipsec-policy add -g MyResourceGroup --gateway-name MyGateway \\
+                --dh-group DHGroup14 --ike-encryption AES256 --ike-integrity SHA384 --ipsec-encryption DES3 \\
+                --ipsec-integrity GCMAES256 --pfs-group PFS2048 --sa-lifetime 600 --sa-max-size 1024
+"""
+
+helps['network vnet-gateway ipsec-policy clear'] = """
+    type: command
+    short-summary: Delete all IPsec policies on a virtual network gateway.
+    examples:
+        - name: Remove all previously specified IPsec policies from a gateway.
+          text: az network vnet-gateway ipsec-policy clear -g MyResourceGroup --gateway-name MyConnection
+"""
+
+helps['network vnet-gateway ipsec-policy list'] = """
+    type: command
+    short-summary: List IPSec policies associated with a virtual network gateway.
+    examples:
+        - name: List the IPsec policies set on a gateway.
+          text: az network vnet-gateway ipsec-policy list -g MyResourceGroup --gateway-name MyConnection
+"""
 
 # region VNet Gateway VPN Client
 helps['network vnet-gateway vpn-client'] = """

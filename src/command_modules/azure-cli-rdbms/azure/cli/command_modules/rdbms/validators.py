@@ -13,8 +13,8 @@ from azure.cli.core.commands.validators import (
 def get_combined_validator(validators):
     def _final_validator_impl(cmd, namespace):
         # do additional creation validation
-        verb = cmd.name.rsplit(' ', 1)[1]
-        if verb == 'create':
+        verbs = cmd.name.rsplit(' ', 2)
+        if verbs[1] == 'server' and verbs[2] == 'create':
             password_validator(namespace)
             get_default_location_from_resource_group(cmd, namespace)
 
@@ -39,6 +39,13 @@ def password_validator(ns):
             ns.administrator_login_password = prompt_pass(msg='Admin Password: ')
         except NoTTYException:
             raise CLIError('Please specify password in non-interactive mode.')
+
+
+def retention_validator(ns):
+    if ns.backup_retention:
+        val = ns.backup_retention
+        if not 7 <= val <= 35:
+            raise CLIError('incorrect usage: --backup_retention. Range is 7 to 35 days.')
 
 
 # Validates if a subnet id or name have been given by the user. If subnet id is given, vnet-name should not be provided.

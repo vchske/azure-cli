@@ -17,6 +17,13 @@ def cf_storage(cli_ctx, *_, **__):
     return get_mgmt_service_client(cli_ctx, StorageManagementClient)
 
 
+def cf_network(cli_ctx, aux_subscriptions=None, **_):
+    from azure.cli.core.profiles import ResourceType
+    from azure.cli.core.commands.client_factory import get_mgmt_service_client
+    return get_mgmt_service_client(cli_ctx, ResourceType.MGMT_NETWORK,
+                                   aux_subscriptions=aux_subscriptions)
+
+
 def cf_hdinsight(cli_ctx, *_, **__):
     from azure.cli.core.commands.client_factory import get_mgmt_service_client
     from azure.mgmt.hdinsight import HDInsightManagementClient
@@ -25,3 +32,23 @@ def cf_hdinsight(cli_ctx, *_, **__):
 
 def cf_hdinsight_clusters(cli_ctx, *_, **__):
     return cf_hdinsight(cli_ctx).clusters
+
+
+def cf_hdinsight_script_actions(cli_ctx, *_, **__):
+    return cf_hdinsight(cli_ctx).script_actions
+
+
+def cf_hdinsight_script_execution_history(cli_ctx, *_, **__):
+    return cf_hdinsight(cli_ctx).script_execution_history
+
+
+def cf_hdinsight_applications(cli_ctx, *_, **__):
+    return cf_hdinsight(cli_ctx).applications
+
+
+def cf_hdinsight_extensions(cli_ctx, *_, **__):
+    return cf_hdinsight(cli_ctx).extensions
+
+
+def cf_hdinsight_locations(cli_ctx, *_, **__):
+    return cf_hdinsight(cli_ctx).locations

@@ -3,6 +3,14 @@
 Release History
 ===============
 
+0.4.1
++++++
+* Minor fixes
+
+0.4.0
++++++
+* Interactive now installs the 'interactive' extension, which will allow for faster updates and support.
+
 0.3.31
 ++++++
 * Ensure global subscription parameter appears in parameters.
@@ -120,11 +128,6 @@ Release History
 ++++++++++++++++++
 
 * Improves the start up time by using cached commands
-
-
-0.3.7 (2017-07-27)
-++++++++++++++++++
-
 * Increase test coverage
 
 0.3.5 (2017-06-21)

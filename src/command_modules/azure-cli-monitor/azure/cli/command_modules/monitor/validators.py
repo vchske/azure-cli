@@ -61,7 +61,7 @@ def validate_autoscale_recurrence(namespace):
                 namespace.recurrence = valid_recurrence[delimiter]['validator'](namespace)
             except CLIError as ex:
                 raise CLIError('{} invalid usage: {}'.format(ex, usage))
-        except KeyError as ex:
+        except KeyError:
             raise CLIError('invalid usage: -r {{{}}} [ARG ARG ...]'.format(','.join(valid_recurrence)))
 
 
@@ -305,6 +305,6 @@ def get_action_group_id_validator(dest):
                     type='actionGroups',
                     name=group
                 )
-            action_group_ids.append(group)
+            action_group_ids.append(group.lower())
         setattr(namespace, dest, action_group_ids)
     return validate_action_group_ids

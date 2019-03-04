@@ -14,6 +14,7 @@ from knack.util import CLIError
 from msrestazure.azure_exceptions import CloudError
 from azure.storage.blob import BlockBlobService
 from ._azure_utils import get_blob_info
+from ._constants import TASK_VALID_VSTS_URLS
 
 logger = get_logger(__name__)
 
@@ -41,19 +42,16 @@ def upload_source_code(client,
     logger.warning("Uploading archived source code from '%s'...", tar_file_path)
     upload_url = None
     relative_path = None
-    error_message = "Could not get SAS URL to upload."
     try:
         source_upload_location = client.get_build_source_upload_url(
             resource_group_name, registry_name)
         upload_url = source_upload_location.upload_url
         relative_path = source_upload_location.relative_path
     except (AttributeError, CloudError) as e:
-        logger.debug("%s Exception: %s", error_message, e)
-        raise CLIError(error_message)
+        raise CLIError("Failed to get a SAS URL to upload context. Error: {}".format(e.message))
 
     if not upload_url:
-        logger.debug("%s Empty source upload URL.", error_message)
-        raise CLIError(error_message)
+        raise CLIError("Failed to get a SAS URL to upload context.")
 
     account_name, endpoint_suffix, container_name, blob_name, sas_token = get_blob_info(upload_url)
     BlockBlobService(account_name=account_name,
@@ -208,8 +206,11 @@ def check_remote_source_code(source_location):
     # http
     if lower_source_location.startswith("https://") or lower_source_location.startswith("http://") \
        or lower_source_location.startswith("github.com/"):
-        if re.search(r"\.git(?:#.+)?$", lower_source_location) or "visualstudio.com" in lower_source_location:
-            # git url must contain ".git" or be from VSTS
+        isVSTS = any(url in lower_source_location for url in TASK_VALID_VSTS_URLS)
+        if isVSTS or re.search(r"\.git(?:#.+)?$", lower_source_location):
+            # git url must contain ".git" or be from VSTS/Azure DevOps.
+            # This is because Azure DevOps doesn't follow the standard git server convention of putting
+            # .git at the end of their URLs, so we have to special case them.
             return source_location
         elif not lower_source_location.startswith("github.com/"):
             # Others are tarball

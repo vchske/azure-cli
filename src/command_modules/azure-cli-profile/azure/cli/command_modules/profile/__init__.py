@@ -24,6 +24,7 @@ class ProfileCommandsLoader(AzCommandsLoader):
         with self.command_group('', profile_custom) as g:
             g.command('login', 'login')
             g.command('logout', 'logout')
+            g.command('self-test', 'check_cli', deprecate_info=g.deprecate(hide=True))
 
         with self.command_group('account', profile_custom) as g:
             g.command('list', 'list_subscriptions', table_transformer=transform_account_list)
@@ -50,6 +51,7 @@ class ProfileCommandsLoader(AzCommandsLoader):
             c.argument('identity_port', type=int, help="the port to retrieve tokens for login. Default: 50342", arg_group='Managed Service Identity')
             c.argument('use_device_code', action='store_true',
                        help="Use CLI's old authentication flow based on device code. CLI will also use this if it can't launch a browser in your behalf, e.g. in remote SSH or Cloud Shell")
+            c.argument('use_cert_sn_issuer', action='store_true', help='used with a service principal configured with Subject Name and Issuer Authentication in order to support automatic certificate rolls')
 
         with self.argument_context('logout') as c:
             c.argument('username', help='account user, if missing, logout the current active account')
@@ -63,7 +65,7 @@ class ProfileCommandsLoader(AzCommandsLoader):
             c.ignore('_subscription')  # hide the global subscription parameter
 
         with self.argument_context('account show') as c:
-            c.argument('show_auth_for_sdk', options_list=['--sdk-auth'], action='store_true', help='output result in compatible with Azure SDK auth file')
+            c.argument('show_auth_for_sdk', options_list=['--sdk-auth'], action='store_true', help='Output result to a file compatible with Azure SDK auth. Only applicable when authenticating with a Service Principal.')
 
 
 COMMAND_LOADER_CLS = ProfileCommandsLoader

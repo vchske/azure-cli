@@ -38,6 +38,7 @@ def load_arguments(self, _):
             c.argument('capabilities', nargs='+', validator=validate_capabilities, help='set custom capabilities on the Cosmos DB database account.')
             c.argument('enable_virtual_network', arg_type=get_three_state_flag(), help='Enables virtual network on the Cosmos DB database account')
             c.argument('virtual_network_rules', nargs='+', validator=validate_virtual_network_rules, help='ACL\'s for virtual network')
+            c.argument('enable_multiple_write_locations', arg_type=get_three_state_flag(), help="Enable Multiple Write Locations")
 
     with self.argument_context('cosmosdb regenerate-key') as c:
         c.argument('key_kind', arg_type=get_enum_type(KeyKind))
@@ -45,12 +46,24 @@ def load_arguments(self, _):
     with self.argument_context('cosmosdb failover-priority-change') as c:
         c.argument('failover_policies', validator=validate_failover_policies, help="space-separated failover policies in 'regionName=failoverPriority' format. E.g eastus=0 westus=1", nargs='+')
 
+    with self.argument_context('cosmosdb network-rule list') as c:
+        c.argument('account_name', id_part=None)
+
+    with self.argument_context('cosmosdb network-rule add') as c:
+        c.argument('subnet', help="Name or ID of the subnet")
+        c.argument('virtual_network', help="The name of the VNET, which must be provided in conjunction with the name of the subnet")
+        c.argument("ignore_missing_vnet_service_endpoint", arg_type=get_three_state_flag(), help="Create firewall rule before the virtual network has vnet service endpoint enabled.")
+
+    with self.argument_context('cosmosdb network-rule remove') as c:
+        c.argument('subnet', help="Name or ID of the subnet")
+        c.argument('virtual_network', help="The name of the VNET, which must be provided in conjunction with the name of the subnet")
+
     with self.argument_context('cosmosdb collection') as c:
         c.argument('collection_id', options_list=['--collection-name', '-c'], help='Collection Name')
-        c.argument('throughput', type=int, help='Offer Throughput')
+        c.argument('throughput', type=int, help='Offer Throughput (RU/s)')
         c.argument('partition_key_path', help='Partition Key Path, e.g., \'/properties/name\'')
         c.argument('indexing_policy', type=shell_safe_json_parse, completer=FilesCompleter(), help='Indexing Policy, you can enter it as a string or as a file, e.g., --indexing-policy @policy-file.json)')
         c.argument('default_ttl', type=int, help='Default TTL')
 
-    with self.argument_context('cosmosdb create') as c:
-        c.argument('enable_multiple_write_locations', arg_type=get_three_state_flag(), help="Enable Multiple Write Locations")
+    with self.argument_context('cosmosdb database') as c:
+        c.argument('throughput', type=int, help='Offer Throughput (RU/s)')

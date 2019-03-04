@@ -170,6 +170,7 @@ def load_arguments(self, _):
                    deprecate_info=c.deprecate(redirect="--disable-rbac", hide="2.0.45"))
         c.argument('max_pods', type=int, options_list=['--max-pods', '-m'], validator=validate_max_pods)
         c.argument('network_plugin')
+        c.argument('network_policy')
         c.argument('no_ssh_key', options_list=['--no-ssh-key', '-x'])
         c.argument('pod_cidr')
         c.argument('service_cidr')
@@ -182,6 +183,7 @@ def load_arguments(self, _):
 
     with self.argument_context('aks enable-addons') as c:
         c.argument('addons', options_list=['--addons', '-a'])
+        c.argument('subnet_name', options_list=['--subnet-name', '-s'])
 
     with self.argument_context('aks get-credentials') as c:
         c.argument('admin', options_list=['--admin', '-a'], default=False)
@@ -211,11 +213,23 @@ def load_arguments(self, _):
         c.argument('os_type', get_enum_type(aci_connector_os_type),
                    help='The OS type of the connector')
 
+    with self.argument_context('aks update-credentials', arg_group='Service Principal') as c:
+        c.argument('reset_service_principal', action='store_true')
+        c.argument('service_principal')
+        c.argument('client_secret')
+
+    with self.argument_context('aks update-credentials', arg_group='AAD') as c:
+        c.argument('reset_aad', action='store_true')
+        c.argument('aad_client_app_id')
+        c.argument('aad_server_app_id')
+        c.argument('aad_server_app_secret')
+        c.argument('aad_tenant_id')
+
     with self.argument_context('aks upgrade') as c:
         c.argument('kubernetes_version', completer=get_k8s_upgrades_completion_list)
 
     with self.argument_context('aks scale') as c:
-        c.argument('nodepool_name', type=str, default='nodepool1',
+        c.argument('nodepool_name', type=str,
                    help='Node pool name, upto 12 alphanumeric characters', validator=validate_nodepool_name)
 
     with self.argument_context('aks upgrade-connector') as c:
@@ -235,6 +249,19 @@ def load_arguments(self, _):
 
     with self.argument_context('aks remove-dev-spaces') as c:
         c.argument('prompt', options_list=['--yes', '-y'], action='store_true', help='Do not prompt for confirmation')
+
+    # OpenShift command argument configuration
+    with self.argument_context('openshift') as c:
+        c.argument('resource_name', name_type, help='Name of the managed OpenShift cluster.',
+                   completer=get_resource_name_completion_list('Microsoft.ContainerService/OpenShiftManagedClusters'))
+        c.argument('name', name_type, help='Name of the managed OpenShift cluster.',
+                   completer=get_resource_name_completion_list('Microsoft.ContainerService/OpenShiftManagedClusters'))
+        c.argument('compute_count', options_list=['--compute-count', '-c'], type=int, default=4)
+        c.argument('tags', tags_type)
+
+    with self.argument_context('openshift create') as c:
+        c.argument('name', validator=validate_linux_host_name)
+        c.argument('compute_vm_size', options_list=['--compute-vm-size', '-s'])
 
 
 def _get_default_install_location(exe_name):

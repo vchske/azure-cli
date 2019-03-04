@@ -9,6 +9,7 @@ from argcomplete.completers import FilesCompleter
 from knack.arguments import CLIArgumentType
 
 from azure.cli.core.profiles import ResourceType
+from azure.cli.core.util import get_default_admin_username
 from azure.cli.core.commands.validators import (
     get_default_location_from_resource_group, validate_file_or_dict)
 from azure.cli.core.commands.parameters import (
@@ -20,11 +21,13 @@ from azure.cli.command_modules.vm._completers import (
 from azure.cli.command_modules.vm._validators import (
     validate_nsg_name, validate_vm_nics, validate_vm_nic, validate_vm_disk, validate_vmss_disk,
     validate_asg_names_or_ids, validate_keyvault, process_gallery_image_version_namespace)
+from ._vm_utils import MSI_LOCAL_ID
 
 
-# pylint: disable=too-many-statements, too-many-branches
+# pylint: disable=too-many-statements, too-many-branches, too-many-locals
 def load_arguments(self, _):
     StorageAccountTypes, UpgradeMode, CachingTypes = self.get_models('StorageAccountTypes', 'UpgradeMode', 'CachingTypes')
+    OperatingSystemTypes = self.get_models('OperatingSystemTypes')
 
     # REUSABLE ARGUMENT DEFINITIONS
     name_arg_type = CLIArgumentType(options_list=['--name', '-n'], metavar='NAME')
@@ -40,6 +43,8 @@ def load_arguments(self, _):
                                      completer=get_resource_name_completion_list('Microsoft.Compute/virtualMachineScaleSets'),
                                      help="Scale set name. You can configure the default using `az configure --defaults vmss=<name>`",
                                      id_part='name')
+
+    extension_instance_name_type = CLIArgumentType(help="Name of the vm's instance of the extension. Default: name of the extension.")
 
     if StorageAccountTypes:
         disk_sku = CLIArgumentType(arg_type=get_enum_type(StorageAccountTypes))
@@ -61,7 +66,7 @@ def load_arguments(self, _):
         with self.argument_context(scope) as c:
             c.ignore('source_blob_uri', 'source_disk', 'source_snapshot')
             c.argument('source_storage_account_id', help='used when source blob is in a different subscription')
-            c.argument('size_gb', options_list=['--size-gb', '-z'], help='size in GB.')
+            c.argument('size_gb', options_list=['--size-gb', '-z'], help='size in GB. Max size: 4095 GB (certain preview disks can be larger).', type=int)
             c.argument('duration_in_seconds', help='Time duration in seconds until the SAS access expires', type=int)
 
     for scope in ['disk create', 'snapshot create']:
@@ -75,18 +80,9 @@ def load_arguments(self, _):
         c.argument('disk_name', existing_disk_name, completer=get_resource_name_completion_list('Microsoft.Compute/disks'))
         c.argument('name', arg_type=name_arg_type)
         c.argument('sku', arg_type=disk_sku, help='Underlying storage SKU')
+        c.argument('os_type', arg_type=get_enum_type(OperatingSystemTypes), help='The Operating System type of the Disk.')
         c.argument('disk_iops_read_write', type=int, min_api='2018-06-01', help='The number of IOPS allowed for this disk. Only settable for UltraSSD disks. One operation can transfer between 4k and 256k bytes')
         c.argument('disk_mbps_read_write', type=int, min_api='2018-06-01', help="The bandwidth allowed for this disk. Only settable for UltraSSD disks. MBps means millions of bytes per second with ISO notation of powers of 10")
-    # endregion
-
-    # region Identity
-    # TODO move to its own command module https://github.com/Azure/azure-cli/issues/5105
-    with self.argument_context('identity') as c:
-        c.argument('resource_name', arg_type=name_arg_type, id_part='name')
-
-    with self.argument_context('identity create') as c:
-        c.argument('location', get_location_type(self.cli_ctx))
-        c.argument('tags', tags_type)
     # endregion
 
     # region Snapshots
@@ -112,6 +108,7 @@ def load_arguments(self, _):
         c.argument('zone_resilient', min_api='2017-12-01', arg_type=get_three_state_flag(), help='Specifies whether an image is zone resilient or not. '
                    'Default is false. Zone resilient images can be created only in regions that provide Zone Redundant Storage')
         c.argument('storage_sku', arg_type=disk_sku, help='The SKU of the storage account with which to create the VM image. Unused if source VM is specified.')
+        c.argument('os_disk_caching', arg_type=get_enum_type(CachingTypes), help="Storage caching type for the image's OS disk.")
         c.ignore('source_virtual_machine', 'os_blob_uri', 'os_disk', 'os_snapshot', 'data_blob_uris', 'data_disks', 'data_snapshots')
     # endregion
 
@@ -147,7 +144,7 @@ def load_arguments(self, _):
         c.argument('overwrite', action='store_true')
 
     with self.argument_context('vm update') as c:
-        c.argument('os_disk', min_api='2017-12-01', help="Managed OS disk ID or name to swap to. Feature registration for 'Microsoft.Compute/AllowManagedDisksReplaceOSDisk' is needed")
+        c.argument('os_disk', min_api='2017-12-01', help="Managed OS disk ID or name to swap to")
         c.argument('write_accelerator', nargs='*', min_api='2017-12-01',
                    help="enable/disable disk write accelerator. Use singular value 'true/false' to apply across, or specify individual disks, e.g.'os=true 1=true 2=true' for os disk and data disks with lun of 1 & 2")
         c.argument('disk_caching', nargs='*', help="Use singular value to apply across, or specify individual disks, e.g. 'os=ReadWrite 0=None 1=ReadOnly' should enable update os disk and 2 data disks")
@@ -186,24 +183,27 @@ def load_arguments(self, _):
 
     with self.argument_context('vm disk') as c:
         c.argument('vm_name', options_list=['--vm-name'], id_part=None, completer=get_resource_name_completion_list('Microsoft.Compute/virtualMachines'))
-        c.argument('disk', validator=validate_vm_disk, help='disk name or ID', completer=get_resource_name_completion_list('Microsoft.Compute/disks'))
         c.argument('new', action='store_true', help='create a new disk')
         c.argument('sku', arg_type=disk_sku, help='Underlying storage SKU')
-        c.argument('size_gb', options_list=['--size-gb', '-z'], help='size in GB.')
+        c.argument('size_gb', options_list=['--size-gb', '-z'], help='size in GB. Max size: 4095 GB (certain preview disks can be larger).', type=int)
         c.argument('lun', type=int, help='0-based logical unit number (LUN). Max value depends on the Virtual Machine size.')
 
     with self.argument_context('vm disk attach') as c:
         c.argument('enable_write_accelerator', min_api='2017-12-01', action='store_true', help='enable write accelerator')
+        c.argument('disk', options_list=['--name', '-n', c.deprecate(target='--disk', redirect='--name', hide=True)],
+                   help="The name or ID of the managed disk", validator=validate_vm_disk, id_part='name',
+                   completer=get_resource_name_completion_list('Microsoft.Compute/disks'))
 
     with self.argument_context('vm disk detach') as c:
-        c.argument('disk_name', options_list=['--name', '-n'], help='The data disk name.')
+        c.argument('disk_name', arg_type=name_arg_type, help='The data disk name.')
 
     with self.argument_context('vm encryption enable') as c:
         c.argument('encrypt_format_all', action='store_true', help='Encrypts-formats data disks instead of encrypting them. Encrypt-formatting is a lot faster than in-place encryption but wipes out the partition getting encrypt-formatted.')
 
     with self.argument_context('vm extension') as c:
-        c.argument('vm_extension_name', name_arg_type, completer=get_resource_name_completion_list('Microsoft.Compute/virtualMachines/extensions'), help='extension name', id_part='child_name_1')
+        c.argument('vm_extension_name', name_arg_type, completer=get_resource_name_completion_list('Microsoft.Compute/virtualMachines/extensions'), help='Name of the extension.', id_part='child_name_1')
         c.argument('vm_name', arg_type=existing_vm_name, options_list=['--vm-name'], id_part='name')
+        c.argument('expand', deprecate_info=c.deprecate(expiration='2.1.0', hide=True))
 
     with self.argument_context('vm extension list') as c:
         c.argument('vm_name', arg_type=existing_vm_name, options_list=['--vm-name'], id_part=None)
@@ -240,22 +240,14 @@ def load_arguments(self, _):
     with self.argument_context('vm nic show') as c:
         c.argument('nic', help='NIC name or ID.', validator=validate_vm_nic)
 
-    with self.argument_context('vm run-command') as c:
-        c.argument('command_id', completer=get_vm_run_command_completion_list,
-                   help="The command id. Use 'az vm run-command list' to get the list")
-
-    with self.argument_context('vm run-command invoke') as c:
-        c.argument('parameters', nargs='+', help="space-separated parameters in the format of '[name=]value'")
-        c.argument('scripts', nargs='+', help="script lines separated by whites spaces. Use @{file} to load from a file")
-
     with self.argument_context('vm unmanaged-disk') as c:
-        c.argument('disk_size', help='Size of disk (GiB)', default=1023, type=int)
         c.argument('new', action='store_true', help='Create a new disk.')
         c.argument('lun', type=int, help='0-based logical unit number (LUN). Max value depends on the Virtual Machine size.')
         c.argument('vhd_uri', help="Virtual hard disk URI. For example: https://mystorage.blob.core.windows.net/vhds/d1.vhd")
 
     with self.argument_context('vm unmanaged-disk attach') as c:
-        c.argument('disk_name', options_list=['--name', '-n'], help='The data disk name(optional when create a new disk)')
+        c.argument('disk_name', options_list=['--name', '-n'], help='The data disk name.')
+        c.argument('size_gb', options_list=['--size-gb', '-z'], help='size in GB. Max size: 4095 GB (certain preview disks can be larger).', type=int)
 
     with self.argument_context('vm unmanaged-disk detach') as c:
         c.argument('disk_name', options_list=['--name', '-n'], help='The data disk name.')
@@ -273,9 +265,13 @@ def load_arguments(self, _):
 
     with self.argument_context('vm list-skus') as c:
         c.argument('size', options_list=['--size', '-s'], help="size name, partial name is accepted")
-        c.argument('zone', options_list=['--zone', '-z'], arg_type=get_three_state_flag(), help="show all vm size supporting availabilityt zones")
-        c.argument('show_all', options_list=['--all'], help="show all information including vm sizes not available under the current subscription")
+        c.argument('zone', options_list=['--zone', '-z'], arg_type=get_three_state_flag(), help="show all vm size supporting availability zones")
+        c.argument('show_all', options_list=['--all'], arg_type=get_three_state_flag(),
+                   help="show all information including vm sizes not available under the current subscription")
         c.argument('resource_type', options_list=['--resource-type', '-r'], help='resource types e.g. "availabilitySets", "snapshots", "disk", etc')
+
+    with self.argument_context('vm restart') as c:
+        c.argument('force', action='store_true', help='Force the VM to restart by redeploying it. Use if the VM is unresponsive.')
     # endregion
 
     # region VMSS
@@ -311,9 +307,9 @@ def load_arguments(self, _):
         c.argument('vm_sku', help='Size of VMs in the scale set. Default to "Standard_DS1_v2". See https://azure.microsoft.com/en-us/pricing/details/virtual-machines/ for size info.')
         c.argument('nsg', help='Name or ID of an existing Network Security Group.', arg_group='Network')
         c.argument('priority', resource_type=ResourceType.MGMT_COMPUTE, min_api='2017-12-01', arg_type=get_enum_type(VMPriorityTypes, default=None),
-                   help="(PREVIEW)Priority. Use 'Low' to run short-lived workloads in a cost-effective way")
+                   help="Priority. Use 'Low' to run short-lived workloads in a cost-effective way")
         c.argument('eviction_policy', resource_type=ResourceType.MGMT_COMPUTE, min_api='2017-12-01', arg_type=get_enum_type(VirtualMachineEvictionPolicyTypes, default=None),
-                   help="(PREVIEW) the eviction policy for virtual machines in a low priority scale set.")
+                   help="(PREVIEW) The eviction policy for virtual machines in a low priority scale set.")
         c.argument('application_security_groups', resource_type=ResourceType.MGMT_COMPUTE, min_api='2018-06-01', nargs='+', options_list=['--asgs'], help='Space-separated list of existing application security groups to associate with the VM.', arg_group='Network', validator=validate_asg_names_or_ids)
 
     with self.argument_context('vmss create', arg_group='Network Balancer') as c:
@@ -344,9 +340,12 @@ def load_arguments(self, _):
         c.argument('vmss_name', id_part=None, help='Scale set name')
 
     with self.argument_context('vmss disk') as c:
+        options_list = ['--vmss-name'] + [c.deprecate(target=opt, redirect='--vmss-name', hide=True)for opt in name_arg_type.settings['options_list']]
+        new_vmss_name_type = CLIArgumentType(overrides=vmss_name_type, options_list=options_list)
+
         c.argument('lun', type=int, help='0-based logical unit number (LUN). Max value depends on the Virtual Machine instance size.')
-        c.argument('size_gb', options_list=['--size-gb', '-z'], help='size in GB.')
-        c.argument('vmss_name', vmss_name_type, completer=get_resource_name_completion_list('Microsoft.Compute/virtualMachineScaleSets'))
+        c.argument('size_gb', options_list=['--size-gb', '-z'], help='size in GB. Max size: 4095 GB (certain preview disks can be larger).', type=int)
+        c.argument('vmss_name', new_vmss_name_type, completer=get_resource_name_completion_list('Microsoft.Compute/virtualMachineScaleSets'))
         c.argument('disk', validator=validate_vmss_disk, help='existing disk name or ID to attach or detach from VM instances',
                    min_api='2017-12-01', completer=get_resource_name_completion_list('Microsoft.Compute/disks'))
         c.argument('instance_id', help='Scale set VM instance id', min_api='2017-12-01')
@@ -371,17 +370,26 @@ def load_arguments(self, _):
     # region VM & VMSS Shared
     for scope in ['vm', 'vmss']:
         with self.argument_context(scope) as c:
-            c.argument('no_auto_upgrade', action='store_true', help='by doing this, extension system will not pick the highest minor version for the specified version number, and will not auto update to the latest build/revision number on any scale set updates in future.')
+            c.argument('no_auto_upgrade', arg_type=get_three_state_flag(), help='If set, the extension service will not automatically pick or upgrade to the latest minor version, even if the extension is redeployed.')
+
+        with self.argument_context('{} run-command'.format(scope)) as c:
+            c.argument('command_id', completer=get_vm_run_command_completion_list, help="The command id. Use 'az {} run-command list' to get the list".format(scope))
+            if scope == 'vmss':
+                c.argument('vmss_name', vmss_name_type)
+
+        with self.argument_context('{} run-command invoke'.format(scope)) as c:
+            c.argument('parameters', nargs='+', help="space-separated parameters in the format of '[name=]value'")
+            c.argument('scripts', nargs='+', help="script lines separated by whites spaces. Use @{file} to load from a file")
 
     for scope in ['vm identity assign', 'vmss identity assign']:
         with self.argument_context(scope) as c:
-            c.argument('assign_identity', options_list=['--identities'], nargs='*', help="the identities to assign")
+            c.argument('assign_identity', options_list=['--identities'], nargs='*', help="Space-separated identities to assign. Use '{0}' to refer to the system assigned identity. Default: '{0}'".format(MSI_LOCAL_ID))
             c.argument('vm_name', existing_vm_name)
             c.argument('vmss_name', vmss_name_type)
 
     for scope in ['vm identity remove', 'vmss identity remove']:
         with self.argument_context(scope) as c:
-            c.argument('identities', nargs='+', help="Space-separated identities to remove. Use '[system]' to refer system assigned identity.")
+            c.argument('identities', nargs='+', help="Space-separated identities to remove. Use '{0}' to refer to the system assigned identity. Default: '{0}'".format(MSI_LOCAL_ID))
             c.argument('vm_name', existing_vm_name)
             c.argument('vmss_name', vmss_name_type)
 
@@ -401,20 +409,31 @@ def load_arguments(self, _):
             c.argument('custom_data', help='Custom init script file or text (cloud-init, cloud-config, etc..)', completer=FilesCompleter(), type=file_type)
             c.argument('secrets', multi_ids_type, help='One or many Key Vault secrets as JSON strings or files via `@{path}` containing `[{ "sourceVault": { "id": "value" }, "vaultCertificates": [{ "certificateUrl": "value", "certificateStore": "cert store name (only on windows)"}] }]`', type=file_type, completer=FilesCompleter())
             c.argument('assign_identity', nargs='*', arg_group='Managed Service Identity', help="accept system or user assigned identities separated by spaces. Use '[system]' to refer system assigned identity, or a resource id to refer user assigned identity. Check out help for more examples")
+            c.ignore('aux_subscriptions')
 
         with self.argument_context(scope, arg_group='Authentication') as c:
             c.argument('generate_ssh_keys', action='store_true', help='Generate SSH public and private key files if missing. The keys will be stored in the ~/.ssh directory')
-            c.argument('admin_username', help='Username for the VM.', default=_get_default_admin_username())
+            c.argument('admin_username', help='Username for the VM.', default=get_default_admin_username())
             c.argument('admin_password', help="Password for the VM if authentication type is 'Password'.")
             c.argument('ssh_key_value', help='SSH public key or public key file path.', completer=FilesCompleter(), type=file_type)
             c.argument('ssh_dest_key_path', help='Destination file path on the VM for the SSH key.')
-            c.argument('authentication_type', help='Type of authentication to use with the VM. Defaults to password for Windows and SSH public key for Linux.', arg_type=get_enum_type(['ssh', 'password']))
+            c.argument('authentication_type', help='Type of authentication to use with the VM. Defaults to password for Windows and SSH public key for Linux. "all" enables both ssh and password authentication. ', arg_type=get_enum_type(['ssh', 'password', 'all']))
 
         with self.argument_context(scope, arg_group='Storage') as c:
+            if StorageAccountTypes:
+                allowed_values = ", ".join([sku.value for sku in StorageAccountTypes])
+            else:
+                allowed_values = ", ".join(['Premium_LRS', 'Standard_LRS'])
+
+            usage = 'Usage: [--storage-sku SKU | --storage-sku ID=SKU ID=SKU ID=SKU...], where each ID is "os" or a 0-indexed lun.'
+            allowed_values = 'Allowed values: {}.'.format(allowed_values)
+            storage_sku_help = 'The SKU of the storage account with which to persist VM. Use a singular sku that would be applied across all disks, ' \
+                               'or specify individual disks. {} {}'.format(usage, allowed_values)
+
             c.argument('os_disk_name', help='The name of the new VM OS disk.')
             c.argument('os_type', help='Type of OS installed on a custom VHD. Do not use when specifying an URN or URN alias.', arg_type=get_enum_type(['windows', 'linux']))
             c.argument('storage_account', help="Only applicable when used with `--use-unmanaged-disk`. The name to use when creating a new storage account or referencing an existing one. If omitted, an appropriate storage account in the same resource group and location will be used, or a new one will be created.")
-            c.argument('storage_sku', arg_type=disk_sku, help='The SKU of the storage account with which to persist VM')
+            c.argument('storage_sku', nargs='+', help=storage_sku_help)
             c.argument('storage_container_name', help="Only applicable when used with `--use-unmanaged-disk`. Name of the storage container for the VM OS disk. Default: vhds")
             c.ignore('os_publisher', 'os_offer', 'os_sku', 'os_version', 'storage_profile')
             c.argument('use_unmanaged_disk', action='store_true', help='Do not use managed disk to persist VM')
@@ -424,7 +443,9 @@ def load_arguments(self, _):
             c.argument('data_caching', options_list=['--data-disk-caching'], nargs='+',
                        help="storage caching type for data disk(s), including 'None', 'ReadOnly', 'ReadWrite', etc. Use a singular value to apply on all disks, or use '<lun>=<vaule1> <lun>=<value2>' to configure individual disk")
             c.argument('ultra_ssd_enabled', arg_type=get_three_state_flag(), min_api='2018-06-01',
-                       help='(PREVIEW)Enables or disables the capability to have 1 or more managed data disks with UltraSSD_LRS storage account')
+                       help='(PREVIEW) Enables or disables the capability to have 1 or more managed data disks with UltraSSD_LRS storage account')
+            c.argument('ephemeral_os_disk', arg_type=get_three_state_flag(), min_api='2018-06-01',
+                       help='(Preview) Allows you to create an OS disk directly on the host node, providing local disk performance and faster VM/VMSS reimage time.')
 
         with self.argument_context(scope, arg_group='Network') as c:
             c.argument('vnet_name', help='Name of the virtual network when creating a new one or referencing an existing one.')
@@ -464,9 +485,9 @@ def load_arguments(self, _):
         with self.argument_context(scope) as c:
             c.argument('volume_type', help='Type of volume that the encryption operation is performed on', arg_type=get_enum_type(['DATA', 'OS', 'ALL']))
             c.argument('force', action='store_true', help='continue by ignoring client side validation errors')
-            c.argument('disk_encryption_keyvault', help='The key vault where the generated encryption key will be placed.')
+            c.argument('disk_encryption_keyvault', help='Name or ID of the key vault where the generated encryption key will be placed.')
             c.argument('key_encryption_key', help='Key vault key name or URL used to encrypt the disk encryption key.')
-            c.argument('key_encryption_keyvault', help='The key vault containing the key encryption key used to encrypt the disk encryption key. If missing, CLI will use `--disk-encryption-keyvault`.')
+            c.argument('key_encryption_keyvault', help='Name or ID of the key vault containing the key encryption key used to encrypt the disk encryption key. If missing, CLI will use `--disk-encryption-keyvault`.')
 
     for scope in ['vm extension', 'vmss extension']:
         with self.argument_context(scope) as c:
@@ -477,9 +498,12 @@ def load_arguments(self, _):
 
     with self.argument_context('vm extension set') as c:
         c.argument('force_update', action='store_true', help='force to update even if the extension configuration has not changed.')
+        c.argument('extension_instance_name', extension_instance_name_type, arg_group='Resource Id')
 
     with self.argument_context('vmss extension set', min_api='2017-12-01') as c:
         c.argument('force_update', action='store_true', help='force to update even if the extension configuration has not changed.')
+        c.argument('extension_instance_name', extension_instance_name_type)
+        c.argument('provision_after_extensions', nargs='+', help='Space-separated list of extension names after which this extension should be provisioned. These extensions must already be set on the vm.')
 
     for scope in ['vm extension image', 'vmss extension image']:
         with self.argument_context(scope) as c:
@@ -494,19 +518,21 @@ def load_arguments(self, _):
 
     for scope in ['vm create', 'vm update', 'vmss create', 'vmss update']:
         with self.argument_context(scope) as c:
-            c.argument('license_type', help="license type if the Windows image or disk used was licensed on-premises", arg_type=get_enum_type(['Windows_Server', 'Windows_Client', 'None']))
+            license_msg = "Specifies that the Windows image or disk was licensed on-premises. " \
+                          "To enable Azure Hybrid Benefit for Windows Server, use 'Windows_Server'. " \
+                          "To enable Multitenant Hosting Rights for Windows 10, use 'Windows_Client'. " \
+                          "For more information see the Azure Windows VM online docs."
+            c.argument('license_type', help=license_msg, arg_type=get_enum_type(['Windows_Server', 'Windows_Client', 'None']))
 
     with self.argument_context('sig') as c:
         c.argument('gallery_name', options_list=['--gallery-name', '-r'], help='gallery name')
         c.argument('gallery_image_name', options_list=['--gallery-image-definition', '-i'], help='gallery image definition')
         c.argument('gallery_image_version', options_list=['--gallery-image-version', '-e'], help='gallery image version')
 
-    for scope in ['sig show', 'image gallery delete', 'sig image-definition show', 'sig image-definition delete', 'sig image-definition show']:
+    for scope in ['sig show', 'sig image-definition show', 'sig image-definition delete']:
         with self.argument_context(scope) as c:
             c.argument('gallery_name', options_list=['--gallery-name', '-r'], id_part='name', help='gallery name')
             c.argument('gallery_image_name', options_list=['--gallery-image-definition', '-i'], id_part='child_name_1', help='gallery image definition')
-            c.argument('gallery_image_version', options_list=['--gallery-image-version', '-e'], id_part='child_name_2', help='gallery image version')
-            c.argument('gallery_image_version_name', options_list=['--gallery-image-version', '-e'], id_part='child_name_2', help='gallery image version')
 
     with self.argument_context('sig image-definition create') as c:
         c.argument('offer', options_list=['--offer', '-f'], help='image offer')
@@ -537,29 +563,25 @@ def load_arguments(self, _):
         c.argument('description', help='the description of the gallery image definition')
     with self.argument_context('sig image-definition update') as c:
         c.ignore('gallery_image')
+
+    with self.argument_context('sig image-version') as c:
+        deprecated_option = c.deprecate(target='--gallery-image-version-name', redirect='--gallery-image-version', hide=True, expiration="2.1.0")
+        c.argument('gallery_image_version_name', options_list=['--gallery-image-version', '-e', deprecated_option], )
+
     with self.argument_context('sig image-version create') as c:
         c.argument('gallery_image_version', options_list=['--gallery-image-version', '-e'],
                    help='Gallery image version in semantic version pattern. The allowed characters are digit and period. Digits must be within the range of a 32-bit integer, e.g. <MajorVersion>.<MinorVersion>.<Patch>')
         c.argument('description', help='the description of the gallery image version')
         c.argument('managed_image', help='image name(if in the same resource group) or resource id')
         c.argument('exclude_from_latest', arg_type=get_three_state_flag(), help='The flag means that if it is set to true, people deploying VMs with version omitted will not use this version.')
-        c.argument('replica_count', help='default replicate count. For region specific, use --target-regions', type=int)
         c.argument('version', help='image version')
         c.argument('end_of_life_date', help="the end of life date, e.g. '2020-12-31'")
-    with self.argument_context('sig image-version update') as c:
-        c.ignore('gallery_image_version')
+
     with self.argument_context('sig image-version show') as c:
         c.argument('expand', help="The expand expression to apply on the operation, e.g. 'ReplicationStatus'")
     for scope in ['sig image-version create', 'sig image-version update']:
         with self.argument_context(scope) as c:
             c.argument('target_regions', nargs='*', validator=process_gallery_image_version_namespace,
-                       help='space separated region list, use "<region>=<replicate count>" to apply region specific replicate count')
+                       help='Space-separated list of regions and their replica counts. Use "<region>=<replica count>" to set the replica count for each region. If only the region is specified, the default replica count will be used.')
+            c.argument('replica_count', help='The default number of replicas to be created per region. To set regional replication counts, use --target-regions', type=int)
     # endregion
-
-
-def _get_default_admin_username():
-    import getpass
-    try:
-        return getpass.getuser()
-    except KeyError:
-        return None

@@ -3,8 +3,57 @@
 Release History
 ===============
 
+* `vpn-connection update`: Fix issue where updating a VPN connection between gateways in different subscriptions would fail.
+
+2.3.3
++++++
+* `vpn-connection create/update`: Add `--express-route-gateway-bypass` argument.
+* `express-route`: Port command groups from `express-route` extensions.
+* `express-route`: Added `express-route gateway` and `express-route port` command groups.
+* `express-route peering create/update`: Added argument `--legacy-mode`.
+* `express-route create/update`: Added argument `--allow-classic-operations` and `--express-route-port`.
+* `vnet-gateway create/update`: Add `--gateway-default-site` argument.
+* `vnet-gateway`: Added `ipsec-policy` commands.
+
+2.3.2
++++++
+* `dns zone export`: Ensure exported CNAMEs are FQDNs.
+* `nic ip-config address-pool add/remove`: Add `--gateway-name` to support application gateway backend address pools.
+* `network watcher flow-log configure`: Add arguments `--traffic-analytics`, `--workspace` to support traffic analytics through a Log Analytics workspace.
+* `lb inbound-nat-pool create/update`: Add arguments `--idle-timeout`, `--floating-ip`.
+
+2.3.1
+++++++
+* `express-route update`: Fix issue where `--bandwidth` argument was ignored.
+* `ddos-protection update`: Fix issue with set comprehension causing stack trace.
+
+2.3.0
++++++
+* `traffic-manager profile create/update`: Add support for `--custom-headers` and `--status-code-ranges`. Add support for new routing types: Subnet and Multivalue.
+* `traffic-manager endpoint create/update`: Add support for `--custom-headers` and `--subnets`.
+* `ddos-protection update`: Fix issue where supplying `--vnets ""` to remove vnets caused a strack trace.
+
+2.2.11
+++++++
+* `watcher flow-log configure`: Add support for `--format` and `--log-version`.
+* `dns zone update`: Finished issue where using "" to clear resolution and registration VNets didn't work.
+
+2.2.10
+++++++
+* `application-gateway waf-config set`: Added `--exclusion` argument to support WAF exclusions.
+
+2.2.9
++++++
+* `application-gateway`: Added `root-cert` subcommands to handle trusted root certifcates.
+* `application-gateway create/update`:
+   Added `--min-capacity` for configuring autoscale on v2 app gateways.
+   Added `--custom-error-pages` for configuring custom error pages.
+* `application-gateway create`: Added `--zones` for availability zone support.
+* `application-gateway waf-config set`: Added arguments `--file-upload-limit`, `--max-request-body-size` and `--request-body-check`.
+
 2.2.8
 +++++
+* Deprecated `network interface-endpoint` command names in favor of `network private-endpoint`.
 * `express-route peering connection create`: Fix issue where `--peer-circuit` would not accept an ID.
 * `public-ip create`: Fix issue where `--ip-tags` did not work correctly.
 
