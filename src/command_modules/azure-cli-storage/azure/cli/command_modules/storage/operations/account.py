@@ -26,8 +26,6 @@ def create_storage_account(cmd, resource_group_name, account_name, sku=None, loc
         params.identity = Identity()
     if https_only:
         params.enable_https_traffic_only = https_only
-    # temporary fix to allow idempotent create when value is None. (sdk defaults with False)
-    params.is_hns_enabled = None
 
     if NetworkRuleSet and (bypass or default_action):
         if bypass and not default_action:
@@ -49,22 +47,25 @@ def list_storage_accounts(cmd, resource_group_name=None):
 
 
 def show_storage_account_connection_string(cmd, resource_group_name, account_name, protocol='https', blob_endpoint=None,
-                                           file_endpoint=None, queue_endpoint=None, table_endpoint=None,
+                                           file_endpoint=None, queue_endpoint=None, table_endpoint=None, sas_token=None,
                                            key_name='primary'):
-    scf = storage_client_factory(cmd.cli_ctx)
-    obj = scf.storage_accounts.list_keys(resource_group_name, account_name)  # pylint: disable=no-member
-    try:
-        keys = [obj.keys[0].value, obj.keys[1].value]  # pylint: disable=no-member
-    except AttributeError:
-        # Older API versions have a slightly different structure
-        keys = [obj.key1, obj.key2]  # pylint: disable=no-member
 
     endpoint_suffix = cmd.cli_ctx.cloud.suffixes.storage_endpoint
-    connection_string = 'DefaultEndpointsProtocol={};EndpointSuffix={};AccountName={};AccountKey={}'.format(
-        protocol,
-        endpoint_suffix,
-        account_name,
-        keys[0] if key_name == 'primary' else keys[1])  # pylint: disable=no-member
+    connection_string = 'DefaultEndpointsProtocol={};EndpointSuffix={}'.format(protocol, endpoint_suffix)
+    if account_name is not None:
+        scf = storage_client_factory(cmd.cli_ctx)
+        obj = scf.storage_accounts.list_keys(resource_group_name, account_name)  # pylint: disable=no-member
+        try:
+            keys = [obj.keys[0].value, obj.keys[1].value]  # pylint: disable=no-member
+        except AttributeError:
+            # Older API versions have a slightly different structure
+            keys = [obj.key1, obj.key2]  # pylint: disable=no-member
+
+        connection_string = '{}{}{}'.format(
+            connection_string,
+            ';AccountName={}'.format(account_name),
+            ';AccountKey={}'.format(keys[0] if key_name == 'primary' else keys[1]))  # pylint: disable=no-member
+
     connection_string = '{}{}'.format(connection_string,
                                       ';BlobEndpoint={}'.format(blob_endpoint) if blob_endpoint else '')
     connection_string = '{}{}'.format(connection_string,
@@ -73,6 +74,8 @@ def show_storage_account_connection_string(cmd, resource_group_name, account_nam
                                       ';QueueEndpoint={}'.format(queue_endpoint) if queue_endpoint else '')
     connection_string = '{}{}'.format(connection_string,
                                       ';TableEndpoint={}'.format(table_endpoint) if table_endpoint else '')
+    connection_string = '{}{}'.format(connection_string,
+                                      ';SharedAccessSignature={}'.format(sas_token) if sas_token else '')
     return {'connectionString': connection_string}
 
 
@@ -101,7 +104,7 @@ def update_storage_account(cmd, instance, sku=None, tags=None, custom_domain=Non
     if custom_domain is not None:
         domain = CustomDomain(name=custom_domain)
         if use_subdomain is not None:
-            domain.name = use_subdomain == 'true'
+            domain.use_sub_domain_name = use_subdomain == 'true'
 
     encryption = instance.encryption
     if encryption_services:

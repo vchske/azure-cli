@@ -5,14 +5,16 @@
 
 from azure.cli.core.profiles import ResourceType
 from azure.cli.core.commands.validators import get_default_location_from_resource_group
-from azure.cli.core.commands.parameters import (tags_type, file_type, get_location_type, get_enum_type)
+from azure.cli.core.commands.parameters import (tags_type, file_type, get_location_type, get_enum_type,
+                                                get_three_state_flag)
 
 from ._validators import (get_datetime_type, validate_metadata, get_permission_validator, get_permission_help_string,
                           resource_type_type, services_type, validate_entity, validate_select, validate_blob_type,
                           validate_included_datasets, validate_custom_domain, validate_container_public_access,
                           validate_table_payload_format, validate_key, add_progress_callback, process_resource_group,
                           storage_account_key_options, process_file_download_namespace, process_metric_update_namespace,
-                          get_char_options_validator, validate_bypass, validate_encryption_source, validate_marker)
+                          get_char_options_validator, validate_bypass, validate_encryption_source, validate_marker,
+                          validate_storage_data_plane_list)
 
 
 def load_arguments(self, _):  # pylint: disable=too-many-locals, too-many-statements
@@ -59,6 +61,9 @@ def load_arguments(self, _):  # pylint: disable=too-many-locals, too-many-statem
                                     action='store_true', validator=add_progress_callback)
     socket_timeout_type = CLIArgumentType(help='The socket timeout(secs), used by the service to regulate data flow.',
                                           type=int)
+    num_results_type = CLIArgumentType(
+        default=5000, help='Specifies the maximum number of results to return. Provide "*" to return all.',
+        validator=validate_storage_data_plane_list)
 
     sas_help = 'The permissions the SAS grants. Allowed values: {}. Do not use if a stored access policy is ' \
                'referenced with --id that specifies this value. Can be combined.'
@@ -140,6 +145,7 @@ def load_arguments(self, _):  # pylint: disable=too-many-locals, too-many-statem
 
     with self.argument_context('storage account show-connection-string') as c:
         c.argument('protocol', help='The default endpoint protocol.', arg_type=get_enum_type(['http', 'https']))
+        c.argument('sas_token', help='The SAS token to be used in the connection-string.')
         c.argument('key_name', options_list=['--key'], help='The key to use.',
                    arg_type=get_enum_type(list(storage_account_key_options.keys())))
         for item in ['blob', 'file', 'queue', 'table']:
@@ -183,6 +189,7 @@ def load_arguments(self, _):  # pylint: disable=too-many-locals, too-many-statem
                 required=True)
         c.argument('log', validator=get_char_options_validator('rwd', 'log'))
         c.argument('retention', type=int)
+        c.argument('version', type=float)
 
     with self.argument_context('storage metrics show') as c:
         c.extra('services', validator=get_char_options_validator('bfqt', 'services'), default='bfqt')
@@ -202,10 +209,7 @@ def load_arguments(self, _):  # pylint: disable=too-many-locals, too-many-statem
 
     with self.argument_context('storage blob list') as c:
         c.argument('include', validator=validate_included_datasets)
-        c.argument('num_results', type=int,
-                   help='Specifies the maximum number of blobs to return. Must be in range [1,5000]. '
-                        'If this parameter is not provided, all blobs will be returned.')
-        c.ignore('marker')  # https://github.com/Azure/azure-cli/issues/3745
+        c.argument('num_results', arg_type=num_results_type)
 
     with self.argument_context('storage blob generate-sas') as c:
         from .completers import get_storage_acl_name_completion_list
@@ -229,6 +233,8 @@ def load_arguments(self, _):  # pylint: disable=too-many-locals, too-many-statem
 
     with self.argument_context('storage blob url') as c:
         c.argument('protocol', arg_type=get_enum_type(['http', 'https'], 'https'), help='Protocol to use.')
+        c.argument('snapshot', help='An string value that uniquely identifies the snapshot. The value of'
+                                    'this query parameter indicates the snapshot version.')
 
     with self.argument_context('storage blob set-tier') as c:
         from azure.cli.command_modules.storage._validators import blob_tier_validator
@@ -241,6 +247,19 @@ def load_arguments(self, _):  # pylint: disable=too-many-locals, too-many-statem
         c.argument('enable', arg_type=get_enum_type(['true', 'false']), help='Enables/disables soft-delete.')
         c.argument('days_retained', type=int,
                    help='Number of days that soft-deleted blob will be retained. Must be in range [1,365].')
+
+    with self.argument_context('storage blob service-properties update', min_api='2018-03-28') as c:
+        c.argument('delete_retention', arg_type=get_three_state_flag(), arg_group='Soft Delete',
+                   help='Enables soft-delete.')
+        c.argument('delete_retention_period', type=int, arg_group='Soft Delete',
+                   help='Number of days that soft-deleted blob will be retained. Must be in range [1,365].')
+        c.argument('static_website', arg_group='Static Website', arg_type=get_three_state_flag(),
+                   help='Enables static-website.')
+        c.argument('index_document', help='Represents the name of the index document. This is commonly "index.html".',
+                   arg_group='Static Website')
+        c.argument('error_document_404_path', options_list=['--404-document'], arg_group='Static Website',
+                   help='Represents the path to the error document that should be shown when an error 404 is issued,'
+                        ' in other words, when a browser requests a page that does not exist.')
 
     with self.argument_context('storage blob upload') as c:
         from ._validators import page_blob_tier_validator
@@ -382,6 +401,9 @@ def load_arguments(self, _):  # pylint: disable=too-many-locals, too-many-statem
     with self.argument_context('storage container exists') as c:
         c.ignore('blob_name', 'snapshot')
 
+    with self.argument_context('storage container list') as c:
+        c.argument('num_results', arg_type=num_results_type)
+
     with self.argument_context('storage container set-permission') as c:
         c.ignore('signed_identifiers')
 
@@ -398,11 +420,8 @@ def load_arguments(self, _):  # pylint: disable=too-many-locals, too-many-statem
 
     with self.argument_context('storage container legal-hold') as c:
         c.argument('container_name', container_name_type)
-        c.argument('tags', nargs='+', help='Each tag should be 3 to 23 alphanumeric characters and is '
-                                           'normalized to lower case')
-
-    with self.argument_context('storage container list') as c:
-        c.ignore('marker')  # https://github.com/Azure/azure-cli/issues/3745
+        c.argument('tags', nargs='+',
+                   help='Each tag should be 3 to 23 alphanumeric characters and is normalized to lower case')
 
     with self.argument_context('storage container policy') as c:
         from .completers import get_storage_acl_name_completion_list
@@ -448,7 +467,7 @@ def load_arguments(self, _):  # pylint: disable=too-many-locals, too-many-statem
         c.argument('protocol', arg_type=get_enum_type(['http', 'https'], 'https'), help='Protocol to use.')
 
     with self.argument_context('storage share list') as c:
-        c.ignore('marker')  # https://github.com/Azure/azure-cli/issues/3745
+        c.argument('num_results', arg_type=num_results_type)
 
     with self.argument_context('storage share exists') as c:
         c.ignore('directory_name', 'file_name')
@@ -545,6 +564,7 @@ def load_arguments(self, _):  # pylint: disable=too-many-locals, too-many-statem
         from .completers import dir_path_completer
         c.argument('directory_name', options_list=('--path', '-p'), help='The directory path within the file share.',
                    completer=dir_path_completer)
+        c.argument('num_results', arg_type=num_results_type)
 
     with self.argument_context('storage file metadata show') as c:
         c.register_path_argument()

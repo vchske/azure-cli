@@ -9,6 +9,7 @@ import argparse
 from collections import OrderedDict
 import json
 import re
+import copy
 from six import string_types
 
 from knack.arguments import CLICommandArgument, ignore_type
@@ -146,7 +147,7 @@ def deployment_validate_table_format(result):
         except:  # pylint: disable=bare-except
             error_result['message'] = result['error']['message']
         return error_result
-    elif result.get('properties', None):
+    if result.get('properties', None):
         success_result = OrderedDict()
         success_result['result'] = result['properties']['provisioningState']
         success_result['correlationId'] = result['properties']['correlationId']
@@ -172,11 +173,11 @@ def resource_exists(cli_ctx, resource_group, name, namespace, type, **_):  # pyl
     return existing
 
 
+# pylint: disable=too-many-statements
 def register_ids_argument(cli_ctx):
 
     from knack import events
     from msrestazure.tools import parse_resource_id, is_valid_resource_id
-    import os
 
     ids_metadata = {}
 
@@ -225,7 +226,6 @@ def register_ids_argument(cli_ctx):
             command.add_argument('ids', '--ids', **id_kwargs)
 
     def parse_ids_arguments(_, command, args):
-
         namespace = args
         cmd = namespace._cmd  # pylint: disable=protected-access
 
@@ -243,7 +243,7 @@ def register_ids_argument(cli_ctx):
             errors = [arg for arg in required_args if getattr(namespace, arg.name, None) is None]
             if errors:
                 missing_required = ' '.join((arg.options_list[0] for arg in errors))
-                raise ValueError('({} | {}) are required'.format(missing_required, '--ids'))
+                raise CLIError('({} | {}) are required'.format(missing_required, '--ids'))
             return
 
         # show warning if names are used in conjunction with --ids
@@ -258,6 +258,31 @@ def register_ids_argument(cli_ctx):
         for arg in combined_args:
             setattr(namespace, arg.name, IterateValue())
 
+        def assemble_json(ids):
+            lcount = 0
+            lind = None
+            for i, line in enumerate(ids):
+                if line == '[':
+                    if lcount == 0:
+                        lind = i
+                    lcount += 1
+                elif line == ']':
+                    lcount -= 1
+                    # final closed set of matching brackets
+                    if lcount == 0:
+                        left = lind
+                        right = i + 1
+                        l_comp = ids[:left]
+                        m_comp = [''.join(ids[left:right])]
+                        r_comp = ids[right:]
+                        ids = l_comp + m_comp + r_comp
+                        return assemble_json(ids)
+            # base case--no more merging required
+            return ids
+
+        # reassemble JSON strings from bash
+        ids = assemble_json(ids)
+
         # expand the IDs into the relevant fields
         full_id_list = []
         for val in ids:
@@ -271,7 +296,9 @@ def register_ids_argument(cli_ctx):
                         full_id_list += [json_val['id']]
             except ValueError:
                 # supports piping of --ids to the command when using TSV. Requires use of --query
-                full_id_list = full_id_list + val.split(os.linesep)
+                full_id_list = full_id_list + val.splitlines()
+        if full_id_list:
+            setattr(namespace, '_ids', full_id_list)
 
         for val in full_id_list:
             if not is_valid_resource_id(val):
@@ -300,6 +327,23 @@ def register_global_subscription_argument(cli_ctx):
     def add_subscription_parameter(_, **kwargs):
         from azure.cli.core._completers import get_subscription_id_list
 
+        class SubscriptionNameOrIdAction(argparse.Action):  # pylint:disable=too-few-public-methods
+
+            def __call__(self, parser, namespace, value, option_string=None):
+                from azure.cli.core._profile import Profile
+                profile = Profile(cli_ctx=namespace._cmd.cli_ctx)  # pylint: disable=protected-access
+                subscriptions_list = profile.load_cached_subscriptions()
+                sub_id = None
+                for sub in subscriptions_list:
+                    match_val = value.lower()
+                    if sub['id'].lower() == match_val or sub['name'].lower() == match_val:
+                        sub_id = sub['id']
+                        break
+                if not sub_id:
+                    logger.warning("Subscription '%s' not recognized.", value)
+                    sub_id = value
+                namespace._subscription = sub_id  # pylint: disable=protected-access
+
         commands_loader = kwargs['commands_loader']
         cmd_tbl = commands_loader.command_table
         subscription_kwargs = {
@@ -307,6 +351,7 @@ def register_global_subscription_argument(cli_ctx):
                     'using `az account set -s NAME_OR_ID`',
             'completer': get_subscription_id_list,
             'arg_group': 'Global',
+            'action': SubscriptionNameOrIdAction,
             'configured_default': 'subscription',
             'id_part': 'subscription'
         }
@@ -424,7 +469,7 @@ def _cli_generic_update_command(context, name, getter_op, setter_op, setter_arg_
         )
         return [(k, v) for k, v in arguments.items()]
 
-    def _extract_handler_and_args(args, commmand_kwargs, op):
+    def _extract_handler_and_args(args, commmand_kwargs, op, context):
         from azure.cli.core.commands.client_factory import resolve_client_arg_name
         factory = _get_client_factory(name, **commmand_kwargs)
         client = None
@@ -444,6 +489,8 @@ def _cli_generic_update_command(context, name, getter_op, setter_op, setter_arg_
 
     def handler(args):  # pylint: disable=too-many-branches,too-many-statements
         cmd = args.get('cmd')
+        context_copy = copy.copy(context)
+        context_copy.cli_ctx = cmd.cli_ctx
         force_string = args.get('force_string', False)
         ordered_arguments = args.pop('ordered_arguments', [])
         for item in ['properties_to_add', 'properties_to_set', 'properties_to_remove']:
@@ -451,7 +498,7 @@ def _cli_generic_update_command(context, name, getter_op, setter_op, setter_arg_
                 raise CLIError("Unexpected '{}' was not empty.".format(item))
             del args[item]
 
-        getter, getterargs = _extract_handler_and_args(args, cmd.command_kwargs, getter_op)
+        getter, getterargs = _extract_handler_and_args(args, cmd.command_kwargs, getter_op, context_copy)
         if child_collection_prop_name:
             parent = getter(**getterargs)
             instance = _get_child(
@@ -466,14 +513,15 @@ def _cli_generic_update_command(context, name, getter_op, setter_op, setter_arg_
 
         # pass instance to the custom_function, if provided
         if custom_function_op:
-            custom_function, custom_func_args = _extract_handler_and_args(args, cmd.command_kwargs, custom_function_op)
+            custom_function, custom_func_args = _extract_handler_and_args(
+                args, cmd.command_kwargs, custom_function_op, context_copy)
             if child_collection_prop_name:
                 parent = custom_function(instance=instance, parent=parent, **custom_func_args)
             else:
                 instance = custom_function(instance=instance, **custom_func_args)
 
         # apply generic updates after custom updates
-        setter, setterargs = _extract_handler_and_args(args, cmd.command_kwargs, setter_op)
+        setter, setterargs = _extract_handler_and_args(args, cmd.command_kwargs, setter_op, context_copy)
 
         for arg in ordered_arguments:
             arg_type, arg_values = arg
@@ -513,10 +561,10 @@ def _cli_generic_update_command(context, name, getter_op, setter_op, setter_arg_
 
         if supports_no_wait and no_wait_enabled:
             return None
-        else:
-            no_wait_param = cmd.command_kwargs.get('no_wait_param', None)
-            if no_wait_param and setterargs.get(no_wait_param, None):
-                return None
+
+        no_wait_param = cmd.command_kwargs.get('no_wait_param', None)
+        if no_wait_param and setterargs.get(no_wait_param, None):
+            return None
 
         if _is_poller(result):
             result = LongRunningOperation(cmd.cli_ctx, 'Starting {}'.format(cmd.name))(result)
@@ -591,19 +639,21 @@ def _cli_wait_command(context, name, getter_op, custom_command=False, **kwargs):
         from msrest.exceptions import ClientException
         import time
 
+        context_copy = copy.copy(context)
         getter_args = dict(extract_args_from_signature(context.get_op_handler(getter_op),
                                                        excluded_params=EXCLUDED_NON_CLIENT_PARAMS))
         cmd = args.get('cmd') if 'cmd' in getter_args else args.pop('cmd')
+        context_copy.cli_ctx = cmd.cli_ctx
         operations_tmpl = _get_operations_tmpl(cmd, custom_command=custom_command)
         client_arg_name = resolve_client_arg_name(operations_tmpl, kwargs)
         try:
-            client = factory(context.cli_ctx) if factory else None
+            client = factory(context_copy.cli_ctx) if factory else None
         except TypeError:
-            client = factory(context.cli_ctx, args) if factory else None
+            client = factory(context_copy.cli_ctx, args) if factory else None
         if client and (client_arg_name in getter_args):
             args[client_arg_name] = client
 
-        getter = context.get_op_handler(getter_op)
+        getter = context_copy.get_op_handler(getter_op)
 
         timeout = args.pop('timeout')
         interval = args.pop('interval')
@@ -617,7 +667,7 @@ def _cli_wait_command(context, name, getter_op, custom_command=False, **kwargs):
             raise CLIError(
                 "incorrect usage: --created | --updated | --deleted | --exists | --custom JMESPATH")
 
-        progress_indicator = context.cli_ctx.get_progress_controller()
+        progress_indicator = context_copy.cli_ctx.get_progress_controller()
         progress_indicator.begin()
         for _ in range(0, timeout, interval):
             try:
@@ -644,7 +694,7 @@ def _cli_wait_command(context, name, getter_op, custom_command=False, **kwargs):
                         raise
                 else:
                     raise
-            except Exception as ex:  # pylint: disable=broad-except
+            except Exception:  # pylint: disable=broad-except
                 progress_indicator.stop()
                 raise
 
@@ -672,21 +722,22 @@ def _cli_show_command(context, name, getter_op, custom_command=False, **kwargs):
 
     def handler(args):
         from azure.cli.core.commands.client_factory import resolve_client_arg_name
-
-        getter_args = dict(extract_args_from_signature(context.get_op_handler(getter_op),
+        context_copy = copy.copy(context)
+        getter_args = dict(extract_args_from_signature(context_copy.get_op_handler(getter_op),
                                                        excluded_params=EXCLUDED_NON_CLIENT_PARAMS))
         cmd = args.get('cmd') if 'cmd' in getter_args else args.pop('cmd')
+        context_copy.cli_ctx = cmd.cli_ctx
         operations_tmpl = _get_operations_tmpl(cmd, custom_command=custom_command)
         client_arg_name = resolve_client_arg_name(operations_tmpl, kwargs)
         try:
-            client = factory(context.cli_ctx) if factory else None
+            client = factory(context_copy.cli_ctx) if factory else None
         except TypeError:
-            client = factory(context.cli_ctx, args) if factory else None
+            client = factory(context_copy.cli_ctx, args) if factory else None
 
         if client and (client_arg_name in getter_args):
             args[client_arg_name] = client
 
-        getter = context.get_op_handler(getter_op)
+        getter = context_copy.get_op_handler(getter_op)
         try:
             return getter(**args)
         except Exception as ex:  # pylint: disable=broad-except
@@ -794,6 +845,7 @@ def set_properties(instance, expression, force_string):
 
 def add_properties(instance, argument_values, force_string):
     # The first argument indicates the path to the collection to add to.
+    argument_values = list(argument_values)
     list_attribute_path = _get_internal_path(argument_values.pop(0))
     list_to_add_to = _find_property(instance, list_attribute_path)
 
@@ -833,8 +885,8 @@ def add_properties(instance, argument_values, force_string):
 
 
 def remove_properties(instance, argument_values):
-    # The first argument indicates the path to the collection to add to.
-    argument_values = argument_values if isinstance(argument_values, list) else [argument_values]
+    # The first argument indicates the path to the collection to remove from.
+    argument_values = list(argument_values) if isinstance(argument_values, list) else [argument_values]
 
     list_attribute_path = _get_internal_path(argument_values.pop(0))
     list_index = None
@@ -943,14 +995,13 @@ def _update_instance(instance, part, path):  # pylint: disable=too-many-return-s
 
             if len(matches) == 1:
                 return matches[0]
-            elif len(matches) > 1:
+            if len(matches) > 1:
                 raise CLIError("non-unique key '{}' found multiple matches on {}. Key must be unique."
                                .format(key, path[-2]))
-            else:
-                if key in getattr(instance, 'additional_properties', {}):
-                    instance.enable_additional_properties_sending()
-                    return instance.additional_properties[key]
-                raise CLIError("item with value '{}' doesn\'t exist for key '{}' on {}".format(value, key, path[-2]))
+            if key in getattr(instance, 'additional_properties', {}):
+                instance.enable_additional_properties_sending()
+                return instance.additional_properties[key]
+            raise CLIError("item with value '{}' doesn\'t exist for key '{}' on {}".format(value, key, path[-2]))
 
         if index:
             try:
@@ -964,7 +1015,7 @@ def _update_instance(instance, part, path):  # pylint: disable=too-many-return-s
 
         if hasattr(instance, make_snake_case(part)):
             return getattr(instance, make_snake_case(part), None)
-        elif part in getattr(instance, 'additional_properties', {}):
+        if part in getattr(instance, 'additional_properties', {}):
             instance.enable_additional_properties_sending()
             return instance.additional_properties[part]
         raise AttributeError()

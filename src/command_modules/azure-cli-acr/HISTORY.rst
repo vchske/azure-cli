@@ -3,6 +3,48 @@
 Release History
 ===============
 
+2.2.1
++++++
+* Add '--target' parameter for 'az acr build', 'az acr task create' and 'az acr task update' commands.
+* Improve error handling for runtime commands when not logged into Azure.
+
+2.2.0
++++++
+* BREAKING CHANGE: Remove 'acr build-task' command group.
+* BREAKING CHANGE: Remove '--tag'/'--manifest' from 'acr repository delete' command.
+
+2.1.13
+++++++
+* Add support for VNet/IP rules.
+* Add '--platform' parameter for 'acr build', 'acr task create' and 'acr task update' commands.
+
+2.1.12
+++++++
+* Allow force push a helm chart that doesn't exist.
+* Allow runtime operations without ARM requests.
+* Deprecating '--resource-group' and add '--suffix' parameter for 'az acr login', 'az acr repository', and 'az acr helm' commands.
+
+2.1.11
+++++++
+* Add support for image import from external Container Registries.
+* Condense the table layout for task list.
+* Add support for Azure DevOps URLs.
+
+2.1.10
+++++++
+* Minor fixes.
+
+2.1.9
++++++
+* Add context token to task step.
+* Add support for setting secrets in acr run to mirror acr task.
+* Better support of --top/--orderby in show-tags/show-manifests commands.
+
+2.1.8
++++++
+* Support commit and pull request git events for Task source trigger.
+* Use default Dockerfile if it's not specified in build command.
+
 2.1.7
 +++++
 * Fix an ACR Build encoding issue in Python2.

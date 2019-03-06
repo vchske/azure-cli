@@ -2,10 +2,40 @@
 
 Release History
 ===============
+
+2.1.11
+++++++
+* `deployment create`: Fix issue where type field was case-sensitive.
+* `policy assignment create`: support uri based parameters file
+* `policy set-definition update`: support uri based parameters and definitions files
+* `policy definition update`: fix handling of parameters and rules files
+* `resource show/update/delete/tag/invoke-action`: Fix issue where cross-subscription IDs did not properly honor the subscription ID.
+
+2.1.10
+++++++
+* Minor fixes.
+
+2.1.9
++++++
+* `group deployment create`: support uri based parameters file
+* `policy assignment create/list/show`: support managed identity on policy assignments
+
+2.1.8
++++++
+* Minor fixes
+
+2.1.7
++++++
+* `policy assignment create/list/delete/show/update`: fix handling of scope parameter for management groups
+* add new command of `az resource wait`
+
+2.1.6
++++++
+* `policy definition/set-definition create/list/delete/show/update`: add support for management groups and subscriptions
+
 2.1.5
 +++++
-* `policy definition create`: Fixed the incorrect parameter definition example.
-* `policy definition create`: Replaced the the use of `-n` alias with full `--name` parameter in the example.
+* az policy definition/set-definition create/list/delete/show/update: add support for management groups and subscriptions
 
 2.1.4
 +++++

@@ -7,7 +7,8 @@ from azure.cli.command_modules.storage._client_factory import (cf_sa, cf_blob_co
                                                                page_blob_service_factory, file_data_service_factory,
                                                                queue_data_service_factory, table_data_service_factory,
                                                                cloud_storage_account_service_factory,
-                                                               multi_service_properties_factory)
+                                                               multi_service_properties_factory,
+                                                               cf_blob_data_gen_update)
 from azure.cli.command_modules.storage.sdkutil import cosmosdb_table_exists
 from azure.cli.command_modules.storage._format import transform_immutability_policy
 from azure.cli.core.commands import CliCommandType
@@ -102,7 +103,7 @@ def load_command_table(self, _):  # pylint: disable=too-many-locals, too-many-st
                                 table_transformer=transform_blob_output)
         g.storage_command_oauth('download', 'get_blob_to_path', table_transformer=transform_blob_output)
         g.storage_command_oauth('generate-sas', 'generate_blob_shared_access_signature')
-        g.storage_command_oauth('url', 'make_blob_url', transform=transform_url)
+        g.storage_custom_command_oauth('url', 'create_blob_url', transform=transform_url)
         g.storage_command_oauth('snapshot', 'snapshot_blob')
         g.storage_command_oauth('update', 'set_blob_properties')
         g.storage_command_oauth('exists', 'exists', transform=create_boolean_result_output_transformer('exists'))
@@ -163,6 +164,10 @@ def load_command_table(self, _):  # pylint: disable=too-many-locals, too-many-st
 
     with self.command_group('storage blob service-properties', command_type=base_blob_sdk) as g:
         g.storage_command_oauth('show', 'get_blob_service_properties', exception_handler=show_exception_handler)
+        g.storage_command_oauth('update', generic_update=True, getter_name='get_blob_service_properties',
+                                setter_type=get_custom_sdk('blob', cf_blob_data_gen_update),
+                                setter_name='set_service_properties',
+                                client_factory=cf_blob_data_gen_update)
 
     with self.command_group('storage container', command_type=block_blob_sdk,
                             custom_command_type=get_custom_sdk('blob', blob_data_service_factory)) as g:
@@ -287,7 +292,7 @@ def load_command_table(self, _):  # pylint: disable=too-many-locals, too-many-st
         g.storage_command('delete', 'delete_file', transform=create_boolean_result_output_transformer('deleted'),
                           table_transformer=transform_boolean_for_table)
         g.storage_command('resize', 'resize_file')
-        g.storage_command('url', 'make_file_url', transform=transform_url)
+        g.storage_custom_command('url', 'create_file_url', transform=transform_url)
         g.storage_command('generate-sas', 'generate_file_shared_access_signature')
         g.storage_command('show', 'get_file_properties', table_transformer=transform_file_output,
                           exception_handler=show_exception_handler)
@@ -383,13 +388,20 @@ def load_command_table(self, _):  # pylint: disable=too-many-locals, too-many-st
     with self.command_group('storage entity', table_sdk,
                             custom_command_type=get_custom_sdk('table', table_data_service_factory)) as g:
         from ._format import transform_boolean_for_table, transform_entity_show
-        from ._transformers import create_boolean_result_output_transformer, transform_entity_query_output
+        from ._transformers import (create_boolean_result_output_transformer,
+                                    transform_entity_query_output,
+                                    transform_entities_result,
+                                    transform_entity_result)
 
-        g.storage_command('query', 'query_entities', table_transformer=transform_entity_query_output)
+        g.storage_command('query',
+                          'query_entities',
+                          table_transformer=transform_entity_query_output,
+                          transform=transform_entities_result)
         g.storage_command('replace', 'update_entity')
         g.storage_command('merge', 'merge_entity')
         g.storage_command('delete', 'delete_entity', transform=create_boolean_result_output_transformer('deleted'),
                           table_transformer=transform_boolean_for_table)
         g.storage_command('show', 'get_entity', table_transformer=transform_entity_show,
-                          exception_handler=show_exception_handler)
+                          exception_handler=show_exception_handler,
+                          transform=transform_entity_result)
         g.storage_custom_command('insert', 'insert_table_entity')

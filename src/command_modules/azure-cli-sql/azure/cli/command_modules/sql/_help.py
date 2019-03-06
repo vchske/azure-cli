@@ -3,6 +3,7 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License. See License.txt in the project root for license information.
 # --------------------------------------------------------------------------------------------
+# pylint: disable=line-too-long, too-many-lines
 
 from knack.help_files import helps
 
@@ -80,10 +81,19 @@ helps['sql db update'] = """
     type: command
     short-summary: Update a database.
     examples:
+        - name: Update a database to Standard edition, S0 performance level (10 DTU) by specifying DTU capacity. Note that GeneralPurpose allows a wider range of max size than Standard edition.
+          text: az sql db update -g mygroup -s myserver -n mydb --edition Standard --capacity 10 --max-size 250GB
+        - name: Update a database to Standard edition, S1 performance level (20 DTU) by specifying performance level name. Note that GeneralPurpose allows a wider range of max size than Standard edition.
+          text: az sql db update -g mygroup -s myserver -n mydb --edition Standard --service-objective S1 --max-size 250GB
+        - name: Update a database to GeneralPurpose edition, 4 vcores with Gen5 hardware
+          text: az sql db update -g mygroup -s myserver -n mydb --edition GeneralPurpose --capacity 4 --family Gen5
+        - name: Update database with increased max size
+          text: az sql db update -g mygroup -s myserver -n mydb --max-size 500GB
         - name: Update database with zone redundancy enabled
-          text: az sql db update -g mygroup -s myserver -n mypool -z
+          text: az sql db update -g mygroup -s myserver -n mydb -z
         - name: Update database with zone redundancy explicitly disabled
-          text: az sql db update -g mygroup -s myserver -n mypool -z false
+          text: az sql db update -g mygroup -s myserver -n mydb -z false
+
     """
 helps['sql db audit-policy'] = """
     type: group
@@ -133,7 +143,7 @@ helps['sql db op cancel'] = """
     type: command
     examples:
         - name: Cancel an operation.
-          text: az sql db op cancel -g mygroup -s myserver -d mydb -n d2896db1-2ba8-4c84-bac1-387c430cce40
+          text: az sql db op cancel -g mygroup -s myserver -d mydb -n d2896mydb-2ba8-4c84-bac1-387c430cce40
     """
 helps['sql db replica'] = """
     type: group
@@ -320,7 +330,7 @@ helps['sql elastic-pool op cancel'] = """
     type: command
     examples:
         - name: Cancel an operation.
-          text: az sql elastic-pool op cancel -g mygroup -s myserver -ep myelasticpool -n d2896db1-2ba8-4c84-bac1-387c430cce40
+          text: az sql elastic-pool op cancel -g mygroup -s myserver --elastic-pool myelasticpool -n d2896mydb-2ba8-4c84-bac1-387c430cce40
     """
 helps['sql failover-group'] = """
     type: group
@@ -458,10 +468,12 @@ helps['sql server vnet-rule create'] = """
     examples:
         - name: Create a vnet rule by providing the subnet id.
           text: |
-            az sql server vnet-rule create \\
-              --subnet /subscriptions/{SubID}/resourceGroups/{ResourceGroup}/providers/Microsoft.Network/virtualNetworks/{VNETName}/subnets/{SubnetName}
+            az sql server vnet-rule create --server MyAzureSqlServer --name MyVNetRule \\
+              -g MyResourceGroup --subnet /subscriptions/{SubID}/resourceGroups/{ResourceGroup}/providers/Microsoft.Network/virtualNetworks/{VNETName}/subnets/{SubnetName}
         - name: Create a vnet rule by providing the vnet and subnet name. The subnet id is created by taking the resource group name and subscription id of the SQL server.
-          text: az sql server vnet-rule create --subnet subnetName --vnet-name vnetName
+          text: |
+            az sql server vnet-rule create --server MyAzureSqlServer --name MyVNetRule \\
+                -g MyResourceGroup --subnet subnetName --vnet-name vnetName
     """
 helps['sql mi'] = """
     type: group

@@ -3,6 +3,51 @@
 Release History
 ===============
 
+2.3.18
+++++++
+* add listen-address option to "az aks port-forward"
+
+2.3.17
+++++++
+* az aks enable-addons /disable-addons: support case insensitive name
+* support Azure Active Directory updating operation using "az aks update-credentials --reset-aad"
+* clarify that "--output" is ignored for "az aks get-credentials"
+
+2.3.16
+++++++
+* Minor fixes
+
+2.3.15
+++++++
+* Add Virtual Nodes Preview
+* Add Managed OpenShift commands
+* Support Service Principal updating operation using "az aks update-credentials --reset-service-principal"
+
+2.3.14
+++++++
+* Minor fixes
+* Add support for new ACI regions
+
+2.3.13
+++++++
+* Add Virtual Nodes Preview
+* Remove "(PREVIEW)" from AAD arguments to "az aks create"
+* Mark "az acs" commands as deprecated (the ACS service will retire on January 31, 2020)
+* Add support of Network Policy when creating new AKS clusters
+* Don't require --nodepool-name in "az aks scale" if there's only one nodepool
+
+2.3.12
+++++++
+* Minor fixes
+
+2.3.11
+++++++
+* BREAKING CHANGE: Remove enable_cloud_console_aks_browse to enable 'az aks browse' by default
+
+2.3.10
+++++++
+* Minor fixes
+
 2.3.9
 +++++
 * Minor fixes
@@ -17,7 +62,7 @@ Release History
 
 2.3.6
 +++++
-* `az aks create/scale --nodepool-name` configures nodepool name, truncated to 12 characters, default - nodepool1 
+* `az aks create/scale --nodepool-name` configures nodepool name, truncated to 12 characters, default - nodepool1
 
 2.3.5
 +++++

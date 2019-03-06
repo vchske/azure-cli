@@ -10,7 +10,7 @@ aggregation         : WORD WHITESPACE ;
 
 namespace           : WORD ;
 
-metric              : (WORD | WHITESPACE)+;
+metric              : (WORD | WHITESPACE | '.' | '/' | '_' | '\\' | ':' | '%')+;
 
 operator            : OPERATOR WHITESPACE ;
 
@@ -34,7 +34,7 @@ dim_name            : WORD WHITESPACE ;
 
 dim_values          : dim_value (dim_val_separator dim_value)* ;
 
-dim_value           : (NUMBER | WORD | WHITESPACE)+ ;
+dim_value           : (NUMBER | WORD | '-' | '.' | '*' | WHITESPACE)+ ;
 
 /* LEXER RULES */
 
@@ -69,3 +69,4 @@ QUOTE               : ('\'' | '"') ;
 WHITESPACE          : (' ' | '\t')+ ;
 NEWLINE             : ('\r'? '\n' | '\r')+ ;
 WORD                : (LOWERCASE | UPPERCASE | DIGIT | '_')+ ;
+

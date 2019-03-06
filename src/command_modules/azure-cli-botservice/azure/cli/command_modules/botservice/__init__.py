@@ -11,6 +11,7 @@ from azure.cli.command_modules.botservice._client_factory import get_botservice_
 class BotServiceCommandsLoader(AzCommandsLoader):
 
     def __init__(self, cli_ctx=None):
+
         from azure.cli.core.commands import CliCommandType
         custom_type = CliCommandType(
             operations_tmpl='azure.cli.command_modules.botservice.custom#{}',
@@ -21,8 +22,9 @@ class BotServiceCommandsLoader(AzCommandsLoader):
                                                        suppress_extension=ModExtensionSuppress(
                                                            __name__,
                                                            'botservice',
-                                                           '0.4.0',
-                                                           reason='These commands are now in the CLI',
+                                                           '0.4.3',
+                                                           reason='These commands and functionality are now in the '
+                                                                  'core CLI.',
                                                            recommend_remove=True))
 
     def load_command_table(self, args):

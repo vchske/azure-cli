@@ -2,6 +2,35 @@
 
 Release History
 ===============
+
+2.2.12
+++++++
+* Minor fixes.
+
+2.2.11
+++++++
+* keyvault secret backup: Fixes issue where some users received an 'unexpected_keyword' error when using --id.
+
+2.2.10
+++++++
+* Minor fixes
+
+2.2.9
++++++
+* Minor fixes
+
+2.2.8
++++++
+* Minor fixes
+
+2.2.7
++++++
+* bug fix: do not drop legit exceptions 
+
+2.2.6
++++++
+* Minor changes
+
 2.2.5
 +++++
 * Minor changes

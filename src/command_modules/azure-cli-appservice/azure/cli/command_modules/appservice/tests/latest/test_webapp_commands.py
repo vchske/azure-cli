@@ -2,7 +2,9 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License. See License.txt in the project root for license information.
 # --------------------------------------------------------------------------------------------
+import json
 import unittest
+import jmespath
 import mock
 import uuid
 import os
@@ -97,7 +99,7 @@ class WebappQuickCreateTest(ScenarioTest):
         self.assertTrue(r['ftpPublishingUrl'].startswith('ftp://'))
         self.cmd('webapp config appsettings list -g {} -n {}'.format(resource_group, webapp_name, checks=[
             JMESPathCheck('[0].name', 'WEBSITE_NODE_DEFAULT_VERSION'),
-            JMESPathCheck('[0].value', '6.9.1'),
+            JMESPathCheck('[0].value', '8.11.1'),
         ]))
 
     @ResourceGroupPreparer()
@@ -160,11 +162,11 @@ class WebappQuickCreateTest(ScenarioTest):
 
     @ResourceGroupPreparer(location='japanwest')
     def test_linux_webapp_quick_create_cd(self, resource_group):
-        webapp_name = 'webapp-quick-linux-cd'
+        webapp_name = self.create_random_name(prefix='webapp-linux-cd', length=24)
         plan = 'plan-quick-linux-cd'
         self.cmd('appservice plan create -g {} -n {} --is-linux'.format(resource_group, plan))
         self.cmd('webapp create -g {} -n {} --plan {} -u https://github.com/yugangw-msft/azure-site-test.git -r "node|6.11"'.format(resource_group, webapp_name, plan))
-        time.sleep(30)  # 30 seconds should be enough for the deployment finished(Skipped under playback mode)
+        time.sleep(45)  # 45 seconds should be enough for the deployment finished(Skipped under playback mode)
         r = requests.get('http://{}.azurewebsites.net'.format(webapp_name), timeout=240)
         # verify the web page
         if 'Hello world' not in str(r.content):
@@ -291,7 +293,7 @@ class WebappConfigureTest(ScenarioTest):
             .assert_with_checks(checks)
 
         # site appsettings testing
-        # update
+        # update through key value pairs
         self.cmd('webapp config appsettings set -g {} -n {} --settings s1=foo s2=bar s3=bar2'.format(resource_group, webapp_name)).assert_with_checks([
             JMESPathCheck("length([?name=='s1'])", 1),
             JMESPathCheck("length([?name=='s2'])", 1),
@@ -300,6 +302,7 @@ class WebappConfigureTest(ScenarioTest):
             JMESPathCheck("length([?value=='bar'])", 1),
             JMESPathCheck("length([?value=='bar2'])", 1)
         ])
+
         # show
         result = self.cmd('webapp config appsettings list -g {} -n {}'.format(resource_group, webapp_name)).get_output_in_json()
         s2 = next((x for x in result if x['name'] == 's2'))
@@ -370,6 +373,75 @@ class WebappConfigureTest(ScenarioTest):
 
         # see deployment user; just make sure the command does return something
         self.assertTrue(self.cmd('webapp deployment user show').get_output_in_json()['type'])
+
+    @ResourceGroupPreparer(name_prefix='cli_test_webapp_json')
+    def test_update_webapp_settings_thru_json(self, resource_group):
+        webapp_name = self.create_random_name('webapp-config-test', 40)
+        plan_name = self.create_random_name('webapp-config-plan', 40)
+
+        # update through a json file with key value pair
+        _, settings_file = tempfile.mkstemp()
+        with open(settings_file, 'w+') as file:
+            file.write(json.dumps({'s2': 'value2'}))
+
+        self.cmd('appservice plan create -g {} -n {} --sku S1'.format(resource_group, plan_name))
+        self.cmd('webapp create -g {} -n {} --plan {}'.format(resource_group, webapp_name, plan_name))
+
+        output = self.cmd('webapp config appsettings set -g {} -n {} --settings s=value "@{}"'.format(
+            resource_group, webapp_name, settings_file)).get_output_in_json()
+        output = [s for s in output if s['name'] in ['s', 's2']]
+        output.sort(key=lambda s: s['name'])
+        self.assertEqual(output[0], {
+            'name': 's',
+            'value': 'value',
+            'slotSetting': False
+        })
+        self.assertEqual(output[1], {
+            'name': 's2',
+            'value': 'value2',
+            'slotSetting': False
+        })
+
+        # output using the output of the set/list command
+        output.append({
+            'name': 's3',
+            'value': 'value3',
+            'slotSetting': True
+        })
+        with open(settings_file, 'w') as file:
+            file.write(json.dumps(output))
+
+        output = self.cmd('webapp config appsettings set -g {} -n {} --settings "@{}"'.format(
+            resource_group, webapp_name, settings_file)).get_output_in_json()
+        output = [s for s in output if s['name'] in ['s', 's2', 's3']]
+        output.sort(key=lambda s: s['name'])
+
+        self.assertEqual(output[0], {
+            'name': 's',
+            'value': 'value',
+            'slotSetting': False
+        })
+        self.assertEqual(output[1], {
+            'name': 's2',
+            'value': 'value2',
+            'slotSetting': False
+        })
+        self.assertEqual(output[2], {
+            'name': 's3',
+            'value': 'value3',
+            'slotSetting': True
+        })
+        # update site config
+        site_configs = {
+            "requestTracingEnabled": True,
+            "alwaysOn": True
+        }
+        with open(settings_file, 'w') as file:
+            file.write(json.dumps(site_configs))
+        self.cmd('webapp config set -g {} -n {} --generic-configurations "@{}"'.format(resource_group, webapp_name, settings_file)).assert_with_checks([
+            JMESPathCheck("requestTracingEnabled", True),
+            JMESPathCheck("alwaysOn", True),
+        ])
 
 
 class WebappScaleTest(ScenarioTest):
@@ -480,6 +552,58 @@ class LinuxWebappScenarioTest(ScenarioTest):
         self.assertEqual(result2, [])
 
 
+class LinuxWebappSSHScenarioTest(ScenarioTest):
+    @ResourceGroupPreparer(location='japanwest')
+    def test_linux_webapp_ssh(self, resource_group):
+        runtime = 'node|8.11'
+        plan = self.create_random_name(prefix='webapp-ssh-plan', length=24)
+        webapp = self.create_random_name(prefix='webapp-ssh', length=24)
+        self.cmd('appservice plan create -g {} -n {} --sku S1 --is-linux' .format(resource_group, plan))
+        self.cmd('webapp create -g {} -n {} --plan {} --runtime {}'.format(resource_group, webapp, plan, runtime))
+        time.sleep(30)
+        requests.get('http://{}.azurewebsites.net'.format(webapp), timeout=240)
+        time.sleep(30)
+        self.cmd('webapp ssh -g {} -n {}'.format(resource_group, webapp))
+        time.sleep(30)
+
+
+class LinuxWebappMulticontainerSlotScenarioTest(ScenarioTest):
+    @ResourceGroupPreparer()
+    def test_linux_webapp_multicontainer_slot(self, resource_group):
+        webapp_name = self.create_random_name(prefix='webapp-linux-multi', length=24)
+        plan = self.create_random_name(prefix='plan-linux-multi', length=24)
+        config_file = os.path.join(TEST_DIR, 'sample-compose.yml')
+        slot = "stage"
+        slot_webapp_name = "{}-{}".format(webapp_name, slot)
+        slot_config_file = os.path.join(TEST_DIR, 'sample-compose-slot.yml')
+
+        self.cmd('appservice plan create -g {} -n {} --is-linux --sku S1'.format(resource_group, plan))
+        self.cmd("webapp create -g {} -n {} --plan {} --multicontainer-config-file \"{}\" "
+                 "--multicontainer-config-type COMPOSE".format(resource_group, webapp_name, plan, config_file))
+
+        last_number_seen = 99999999
+        for x in range(0, 10):
+            r = requests.get('http://{}.azurewebsites.net'.format(webapp_name), timeout=240)
+            # verify the web page
+            self.assertTrue('Hello World! I have been seen' in str(r.content))
+            current_number = [int(s) for s in r.content.split() if s.isdigit()][0]
+            self.assertNotEqual(current_number, last_number_seen)
+            last_number_seen = current_number
+
+        self.cmd('webapp deployment slot create -g {} -n {} --slot {}'.format(resource_group, webapp_name, slot))
+        self.cmd("webapp config container set -g {} -n {} --slot {} --multicontainer-config-file \"{}\" "
+                 "--multicontainer-config-type COMPOSE".format(resource_group, webapp_name, slot, slot_config_file))
+
+        last_number_seen = 99999999
+        for x in range(0, 10):
+            r = requests.get('http://{}.azurewebsites.net'.format(slot_webapp_name), timeout=240)
+            # verify the web page
+            self.assertTrue('Hello from a slot! I have been seen' in str(r.content))
+            current_number = [int(s) for s in r.content.split() if s.isdigit()][0]
+            self.assertNotEqual(current_number, last_number_seen)
+            last_number_seen = current_number
+
+
 class WebappACRScenarioTest(ScenarioTest):
     @ResourceGroupPreparer(location='japanwest')
     def test_acr_integration(self, resource_group):
@@ -495,6 +619,71 @@ class WebappACRScenarioTest(ScenarioTest):
             resource_group, webapp, acr_registry_name), checks=[
                 JMESPathCheck("[?name=='DOCKER_REGISTRY_SERVER_USERNAME']|[0].value", creds['username'])
         ])
+
+
+class FunctionappACRScenarioTest(ScenarioTest):
+    @ResourceGroupPreparer(location='japanwest')
+    @StorageAccountPreparer()
+    def test_acr_integration_function_app(self, resource_group, storage_account):
+        plan = self.create_random_name(prefix='acrtestplanfunction', length=24)
+        functionapp = self.create_random_name(prefix='functionappacrtest', length=24)
+        runtime = 'node'
+        acr_registry_name = functionapp
+        self.cmd('acr create --admin-enabled -g {} -n {} --sku Basic'.format(resource_group, acr_registry_name))
+        self.cmd('appservice plan create -g {} -n {} --sku S1 --is-linux' .format(resource_group, plan))
+        self.cmd('functionapp create -g {} -n {} -s {} --plan {} --runtime {}'.format(resource_group, functionapp, storage_account, plan, runtime))
+        creds = self.cmd('acr credential show -n {}'.format(acr_registry_name)).get_output_in_json()
+        self.cmd('functionapp config container set -g {0} -n {1} --docker-custom-image-name {2}.azurecr.io/image-name:latest --docker-registry-server-url https://{2}.azurecr.io'.format(
+            resource_group, functionapp, acr_registry_name), checks=[
+                JMESPathCheck("[?name=='DOCKER_REGISTRY_SERVER_USERNAME']|[0].value", creds['username'])
+        ])
+        self.cmd('functionapp config container show -g {} -n {} '.format(resource_group, functionapp), checks=[
+            JMESPathCheck("[?name=='DOCKER_REGISTRY_SERVER_USERNAME']|[0].value", creds['username']),
+            JMESPathCheck("[?name=='DOCKER_REGISTRY_SERVER_URL']|[0].name", 'DOCKER_REGISTRY_SERVER_URL')
+        ])
+        self.cmd('functionapp config appsettings list -g {} -n {}'.format(resource_group, functionapp), checks=[
+            JMESPathCheck("[?name=='FUNCTIONS_WORKER_RUNTIME'].value|[0]", 'node'),
+            JMESPathCheck("[?name=='DOCKER_REGISTRY_SERVER_USERNAME'].value|[0]", creds['username'])
+        ])
+        self.cmd('functionapp config container delete -g {} -n {} '.format(resource_group, functionapp))
+        json_result = self.cmd('functionapp config appsettings list -g {} -n {}'.format(resource_group, functionapp)).get_output_in_json()
+        all_settings = [setting['name'] for setting in json_result]
+        # Make sure the related settings are deleted
+        self.assertNotIn('DOCKER_REGISTRY_SERVER_USERNAME', all_settings)
+        self.assertNotIn('DOCKER_REGISTRY_SERVER_URL', all_settings)
+        self.assertNotIn('DOCKER_REGISTRY_SERVER_PASSWORD', all_settings)
+        self.assertIn('FUNCTIONS_WORKER_RUNTIME', all_settings)
+
+        self.cmd('functionapp delete -g {} -n {}'.format(resource_group, functionapp))
+
+
+class FunctionappACRDeploymentScenarioTest(ScenarioTest):
+    @ResourceGroupPreparer(location='japanwest')
+    @StorageAccountPreparer()
+    def test_acr_deployment_function_app(self, resource_group, storage_account):
+        plan = self.create_random_name(prefix='acrtestplanfunction', length=24)
+        functionapp = self.create_random_name(prefix='functionappacrtest', length=24)
+        runtime = 'node'
+        acr_registry_name = functionapp
+        self.cmd('acr create --admin-enabled -g {} -n {} --sku Basic'.format(resource_group, acr_registry_name))
+        self.cmd('appservice plan create -g {} -n {} --sku S1 --is-linux' .format(resource_group, plan))
+        self.cmd('functionapp create -g {} -n {} -s {} --plan {} --runtime {}'.format(resource_group, functionapp, storage_account, plan, runtime))
+        creds = self.cmd('acr credential show -n {}'.format(acr_registry_name)).get_output_in_json()
+        self.cmd('functionapp config container set -g {0} -n {1} --docker-custom-image-name {2}.azurecr.io/image-name:latest --docker-registry-server-url https://{2}.azurecr.io'.format(
+            resource_group, functionapp, acr_registry_name), checks=[
+                JMESPathCheck("[?name=='DOCKER_REGISTRY_SERVER_USERNAME']|[0].value", creds['username'])
+        ])
+        result = self.cmd('functionapp deployment container config -g {} -n {} --enable-cd true'.format(resource_group,
+                                                                                                        functionapp)).get_output_in_json()
+        self.assertTrue(result['CI_CD_URL'].startswith('https://'))
+        self.assertTrue(result['CI_CD_URL'].endswith('.scm.azurewebsites.net/docker/hook'))
+        # verify that show-cd-url works the same way
+        show_result = self.cmd('functionapp deployment container show-cd-url -g {} -n {}'.format(resource_group,
+                                                                                                 functionapp)).get_output_in_json()
+        self.assertTrue(show_result['CI_CD_URL'].startswith('https://'))
+        self.assertTrue(show_result['CI_CD_URL'].endswith('.scm.azurewebsites.net/docker/hook'))
+
+        self.cmd('functionapp delete -g {} -n {}'.format(resource_group, functionapp))
 
 
 class WebappGitScenarioTest(ScenarioTest):
@@ -668,7 +857,7 @@ class WebappSlotSwapScenarioTest(ScenarioTest):
         # reset
         self.cmd('webapp deployment slot swap -g {} -n {} -s {} --action reset'.format(resource_group, webapp, slot))
         self.cmd('webapp config appsettings list -g {} -n {} --slot {}'.format(resource_group, webapp, slot), checks=[
-            JMESPathCheck("[?name=='s1']|[0]", None)
+            JMESPathCheck("[?name=='s1']|[0].value", 'slot')
         ])
 
 
@@ -702,7 +891,7 @@ class WebappSSLCertTest(ScenarioTest):
 
 
 class WebappUndeleteTest(ScenarioTest):
-    @AllowLargeResponse()
+    @AllowLargeResponse(8192)
     @ResourceGroupPreparer()
     def test_webapp_deleted_list(self, resource_group):
         plan = self.create_random_name(prefix='delete-me-plan', length=24)
@@ -713,18 +902,6 @@ class WebappUndeleteTest(ScenarioTest):
         self.cmd('webapp deleted list -g {}'.format(resource_group), checks=[
             JMESPathCheck('[0].deletedSiteName', webapp_name)
         ])
-
-    @AllowLargeResponse()
-    @ResourceGroupPreparer()
-    def test_webapp_deleted_restore(self, resource_group):
-        plan = self.create_random_name(prefix='undelete-plan', length=24)
-        webapp_name = self.create_random_name(prefix='undelete-web', length=24)
-        self.cmd('appservice plan create -g {} -n {} --sku B1 --tags plan=plan1'.format(resource_group, plan))
-        self.cmd('webapp create -g {} -n {} --plan {}'.format(resource_group, webapp_name, plan))
-        # A snapshot must be available to restore a deleted app. The app must exist for at least an hour prior to deletion to have a snapshot.
-        # Using a pre-configured deleted app in this test.
-        deleted_app_id = self.cmd('webapp deleted list -g {} -n {}'.format('nicking', 'nickingdeletedwordpress')).get_output_in_json()[0]['id']
-        self.cmd('webapp deleted restore --deleted-id {} -g {} -n {}'.format(deleted_app_id, resource_group, webapp_name))
 
 
 class FunctionAppWithPlanE2ETest(ScenarioTest):
@@ -789,6 +966,66 @@ class FunctionAppWithLinuxConsumptionPlanTest(ScenarioTest):
                      JMESPathCheck('kind', 'functionapp,linux'),
                      JMESPathCheck('hostNames[0]', functionapp_name + '.azurewebsites.net')])
 
+        self.cmd('functionapp config appsettings list -g {} -n {}'.format(resource_group, functionapp_name), checks=[
+            JMESPathCheck("[?name=='FUNCTIONS_WORKER_RUNTIME'].value|[0]", 'node')])
+
+        self.cmd('functionapp delete -g {} -n {}'.format(resource_group, functionapp_name))
+
+
+class FunctionAppOnWindowsWithRuntime(ScenarioTest):
+    @ResourceGroupPreparer(location='westus')
+    @StorageAccountPreparer()
+    def test_functionapp_windows_runtime(self, resource_group, storage_account):
+        functionapp_name = self.create_random_name('functionappwindowsruntime', 40)
+
+        self.cmd('functionapp create -g {} -n {} -c westus -s {} --os-type Windows --runtime node'
+                 .format(resource_group, functionapp_name, storage_account)).assert_with_checks([
+                     JMESPathCheck('state', 'Running'),
+                     JMESPathCheck('name', functionapp_name),
+                     JMESPathCheck('kind', 'functionapp'),
+                     JMESPathCheck('hostNames[0]', functionapp_name + '.azurewebsites.net')])
+
+        self.cmd('functionapp config appsettings list -g {} -n {}'.format(resource_group, functionapp_name), checks=[
+            JMESPathCheck("[?name=='FUNCTIONS_WORKER_RUNTIME'].value|[0]", 'node')])
+
+        self.cmd('functionapp delete -g {} -n {}'.format(resource_group, functionapp_name))
+
+
+class FunctionAppOnWindowsWithoutRuntime(ScenarioTest):
+    @ResourceGroupPreparer(location='westus')
+    @StorageAccountPreparer()
+    def test_functionapp_windows_without_runtime(self, resource_group, storage_account):
+        functionapp_name = self.create_random_name('functionappwindowswithoutruntime', 40)
+
+        self.cmd('functionapp create -g {} -n {} -c westus -s {} --os-type Windows'
+                 .format(resource_group, functionapp_name, storage_account)).assert_with_checks([
+                     JMESPathCheck('state', 'Running'),
+                     JMESPathCheck('name', functionapp_name),
+                     JMESPathCheck('kind', 'functionapp'),
+                     JMESPathCheck('hostNames[0]', functionapp_name + '.azurewebsites.net')])
+
+        self.cmd('functionapp delete -g {} -n {}'.format(resource_group, functionapp_name))
+
+
+class FunctionAppWithAppInsightsKey(ScenarioTest):
+    @ResourceGroupPreparer(location='westus')
+    @StorageAccountPreparer()
+    def test_functionapp_with_app_insights_key(self, resource_group, storage_account):
+        functionapp_name = self.create_random_name('functionappwithappinsights', 40)
+        app_insights_key = '00000000-0000-0000-0000-123456789123'
+
+        self.cmd('functionapp create -g {} -n {} -c westus -s {} --os-type Windows'
+                 ' --app-insights-key {}'
+                 .format(resource_group, functionapp_name, storage_account, app_insights_key)).assert_with_checks([
+                     JMESPathCheck('state', 'Running'),
+                     JMESPathCheck('name', functionapp_name),
+                     JMESPathCheck('kind', 'functionapp'),
+                     JMESPathCheck('hostNames[0]', functionapp_name + '.azurewebsites.net')])
+
+        self.cmd('functionapp config appsettings list -g {} -n {}'.format(resource_group, functionapp_name)).assert_with_checks([
+            JMESPathCheck("[?name=='APPINSIGHTS_INSTRUMENTATIONKEY'].value|[0]", app_insights_key)
+        ])
+
         self.cmd('functionapp delete -g {} -n {}'.format(resource_group, functionapp_name))
 
 
@@ -811,6 +1048,15 @@ class FunctionAppOnLinux(ScenarioTest):
         ]).get_output_in_json()
         self.assertTrue('functionapp,linux' in result[0]['kind'])
         self.cmd('functionapp delete -g {} -n {}'.format(resource_group, functionapp))
+
+
+class FunctionAppServicePlan(ScenarioTest):
+    @ResourceGroupPreparer(location='westus')
+    def test_functionapp_app_service_plan(self, resource_group):
+        plan = self.create_random_name(prefix='funcappplan', length=24)
+        self.cmd('functionapp plan create -g {} -n {} --sku S1' .format(resource_group, plan), checks=[
+            JMESPathCheck('sku.name', 'S1')
+        ])
 
 
 class WebappAuthenticationTest(ScenarioTest):
@@ -935,11 +1181,13 @@ class WebappListLocationsFreeSKUTest(ScenarioTest):
 
 
 class WebappTriggeredWebJobListTest(ScenarioTest):
+
+    @record_only()
     @ResourceGroupPreparer()
     def test_webapp_triggeredWebjob_list(self, resource_group):
         # testing this using a webjob already created
         # given there is no create command inorder to re-record please create a webjob before
-        # recording this
+        # recording this. Once the create command is available, please remove the "record_only" flag
         resource_group_name = 'cliTestApp'
         webapp_name = 'cliTestApp'
         webjob_name = 'test-triggered'
@@ -954,10 +1202,11 @@ class WebappTriggeredWebJobListTest(ScenarioTest):
 
 class WebappContinuousWebJobE2ETest(ScenarioTest):
     @ResourceGroupPreparer()
+    @record_only()
     def test_webapp_continuousWebjob_e2e(self, resource_group):
         # testing this using a webjob already created
         # given there is no create command inorder to re-record please create a webjob before
-        # recording this
+        # recording this. Once the create command is available, please remove the "record_only" flag
         resource_group_name = 'cliTestApp'
         webapp_name = 'cliTestApp'
         webjob_name = 'test-continuous'

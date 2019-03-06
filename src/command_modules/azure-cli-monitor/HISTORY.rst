@@ -2,6 +2,26 @@
 
 Release History
 ===============
+0.2.10
+++++++
+* `monitor metrics alert create/update`: Allow dimension value '*'.
+
+0.2.9
++++++
+* Make ID comparison case insensitive.
+
+0.2.8
++++++
+* Minor fixes
+
+0.2.7
++++++
+* `monitor metrics alert update`: Fix issue where `--add\remove-action` would not work in some cases.
+* `monitor metrics alert create/update`: Improve `--condition` support for special characters.
+
+0.2.6
++++++
+* `monitor metrics alert create/update`: `--condition` now supports metric names which include characters forward-slash (/) and period (.).
 
 0.2.5
 +++++

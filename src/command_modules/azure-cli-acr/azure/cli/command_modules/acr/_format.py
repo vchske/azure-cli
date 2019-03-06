@@ -46,14 +46,6 @@ def replication_output_format(result):
     return _output_format(result, _replication_format_group)
 
 
-def build_task_output_format(result):
-    return _output_format(result, _build_task_format_group)
-
-
-def build_task_detail_output_format(result):
-    return _output_format(result, _build_task_detail_format_group)
-
-
 def task_output_format(result):
     return _output_format(result, _task_format_group)
 
@@ -170,41 +162,14 @@ def _replication_format_group(item):
     ])
 
 
-def _build_task_format_group(item):
-    return OrderedDict([
-        ('Name', _get_value(item, 'name')),
-        ('PLATFORM', _get_value(item, 'platform', 'osType')),
-        ('STATUS', _get_value(item, 'status')),
-        ('COMMIT TRIGGER', _get_value(item, 'sourceRepository', 'isCommitTriggerEnabled')),
-        ('SOURCE REPOSITORY', _get_value(item, 'sourceRepository', 'repositoryUrl'))
-    ])
-
-
-def _build_task_detail_format_group(item):
-    return OrderedDict([
-        ('Name', _get_value(item, 'name')),
-        ('PLATFORM', _get_value(item, 'platform', 'osType')),
-        ('STATUS', _get_value(item, 'status')),
-        ('COMMIT TRIGGER', _get_value(item, 'sourceRepository', 'isCommitTriggerEnabled')),
-        ('SOURCE REPOSITORY', _get_value(item, 'sourceRepository', 'repositoryUrl')),
-        ('BRANCH', _get_value(item, 'properties', 'branch')),
-        ('BASE IMAGE TRIGGER', _get_value(item, 'properties', 'baseImageTrigger')),
-        ('IMAGE NAMES', _get_value(item, 'properties', 'imageNames')),
-        ('PUSH ENABLED', _get_value(item, 'properties', 'isPushEnabled'))
-    ])
-
-
 def _task_format_group(item):
     return OrderedDict([
-        ('Name', _get_value(item, 'name')),
+        ('NAME', _get_value(item, 'name')),
         ('PLATFORM', _get_value(item, 'platform', 'os')),
         ('STATUS', _get_value(item, 'status')),
-        ('COMMIT TRIGGER', _get_value(item, 'trigger', 'sourceTriggers', 0, 'status')),
         ('SOURCE REPOSITORY', _get_value(item, 'step', 'contextPath')),
-        ('BRANCH', _get_value(item, 'trigger', 'sourceTriggers', 0, 'sourceRepository', 'branch')),
-        ('BASE IMAGE TRIGGER', _get_value(item, 'trigger', 'baseImageTrigger', 'baseImageTriggerType')),
-        ('IMAGE NAMES', _get_value(item, 'step', 'imageNames')),
-        ('PUSH ENABLED', _get_value(item, 'step', 'isPushEnabled'))
+        ('SOURCE TRIGGER', _get_value(item, 'trigger', 'sourceTriggers', 0, 'status')),
+        ('BASE IMAGE TRIGGER', _get_value(item, 'trigger', 'baseImageTrigger', 'baseImageTriggerType'))
     ])
 
 
@@ -214,7 +179,8 @@ def _build_format_group(item):
         ('TASK', _get_value(item, 'buildTask')),
         ('PLATFORM', _get_value(item, 'platform', 'osType')),
         ('STATUS', _get_value(item, 'status')),
-        ("TRIGGER", _get_build_trigger(_get_value(item, 'imageUpdateTrigger'), _get_value(item, 'gitCommitTrigger'))),
+        ("TRIGGER", _get_build_trigger(_get_value(item, 'imageUpdateTrigger'),
+                                       _get_value(item, 'sourceTrigger', 'eventType'))),
         ('STARTED', _format_datetime(_get_value(item, 'startTime'))),
         ('DURATION', _get_duration(_get_value(item, 'startTime'), _get_value(item, 'finishTime')))
     ])
@@ -226,7 +192,8 @@ def _run_format_group(item):
         ('TASK', _get_value(item, 'task')),
         ('PLATFORM', _get_value(item, 'platform', 'os')),
         ('STATUS', _get_value(item, 'status')),
-        ("TRIGGER", _get_build_trigger(_get_value(item, 'imageUpdateTrigger'), _get_value(item, 'sourceTrigger'))),
+        ("TRIGGER", _get_build_trigger(_get_value(item, 'imageUpdateTrigger'),
+                                       _get_value(item, 'sourceTrigger', 'eventType'))),
         ('STARTED', _format_datetime(_get_value(item, 'startTime'))),
         ('DURATION', _get_duration(_get_value(item, 'startTime'), _get_value(item, 'finishTime')))
     ])
@@ -257,9 +224,9 @@ def _get_value(item, *args):
         return ' '
 
 
-def _get_build_trigger(image_update_trigger, git_commit_trigger):
-    if git_commit_trigger.strip():
-        return 'Git Commit'
+def _get_build_trigger(image_update_trigger, git_source_trigger):
+    if git_source_trigger.strip():
+        return git_source_trigger
     if image_update_trigger.strip():
         return 'Image Update'
     return 'Manual'

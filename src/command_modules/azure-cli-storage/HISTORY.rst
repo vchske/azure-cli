@@ -2,6 +2,37 @@
 
 Release History
 ===============
+2.3.1
++++++
+* Changed fix to update only properties that are changed on the same object
+*  Fixed #8021, binary data is encoded in base 64 when returned
+
+2.3.0
++++++
+* BREAKING CHANGE: `storage blob/file/container/share list`- Limit default number of results returned to be 5,000.
+  Use `--num-results *` for original behavior of returning all results.
+* `storage blob/file/container/share list`- log marker for next page to STDERR and expose `--marker` parameter.
+* Add `storage blob service-properties update` command with support for static websites.
+
+2.2.7
++++++
+* `storage logging update`- Add ability to update log schema version for storage services.
+
+2.2.6
++++++
+* Minor fixes.
+
+2.2.5
++++++
+* Improve handling of corner cases for storage copy commands.
+* Fix issue with `storage blob copy start-batch` not using login credentials when the destination and source accounts are the same.
+* `storage blob/file url`- fix bug with sas_token not being incorporated into url.
+* Warn users about future breaking change: `blob/container list` will output first 5000 results by default.
+
+2.2.4
++++++
+* Allow connection to storage services only with SAS and endpoints (without an account name or a key) as described in
+  `Configure Azure Storage connection strings <https://docs.microsoft.com/azure/storage/common/storage-configure-connection-string>`_.
 
 2.2.3
 +++++

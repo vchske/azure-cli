@@ -134,6 +134,8 @@ helps['monitor metrics list'] = """
     parameters:
         - name: --aggregation
           short-summary: The list of aggregation types (space-separated) to retrieve.
+          populator-commands:
+            - az monitor metrics list-definitions
         - name: --interval
           short-summary: >
             The interval over which to aggregate metrics, in ##h##m format.
@@ -144,8 +146,12 @@ helps['monitor metrics list'] = """
           short-summary: Returns the metadata values instead of metric data
         - name: --dimension
           short-summary: The list of dimensions (space-separated) the metrics are queried into.
+          populator-commands:
+            - az monitor metrics list-definitions
         - name: --namespace
           short-summary: Namespace to query metric definitions for.
+          populator-commands:
+            - az monitor metrics list-definitions
         - name: --offset
           short-summary: >
             Time offset of the query range, in ##d##h format.
@@ -154,6 +160,12 @@ helps['monitor metrics list'] = """
             the end time will be calculated by adding the offset. If used with --end-time (default), then
             the start time will be calculated by subtracting the offset. If --start-time and --end-time are
             provided, then --offset will be ignored.
+        - name: --metrics
+          short-summary: >
+            Space-separated list of metric names to retrieve.
+          populator-commands:
+            - az monitor metrics list-definitions
+
     examples:
         - name: List a VM's CPU usage for the past hour
           text: >
@@ -326,6 +338,8 @@ helps['monitor diagnostic-settings categories'] = """
 helps['monitor diagnostic-settings create'] = """
             type: command
             short-summary: Create diagnostic settings for the specified resource.
+            long-summary: >
+                For more information, visit: https://docs.microsoft.com/en-us/rest/api/monitor/diagnosticsettings/createorupdate#metricsettings
             parameters:
                 - name: --name -n
                   short-summary: The name of the diagnostic settings.
@@ -351,6 +365,31 @@ helps['monitor diagnostic-settings create'] = """
                     Name or ID an event hub. If none is specified, the default event hub will be selected.
                 - name: --event-hub-rule
                   short-summary: Name or ID of the event hub authorization rule.
+            examples:
+                - name: Create diagnostic settings with EventHub.
+                  text: |
+                    az monitor diagnostic-settings create --resource {ID} -n {name}
+                       --event-hub-rule {eventHubRuleID} --storage-account {storageAccount}
+                       --logs '[
+                         {
+                           "category": "WorkflowRuntime",
+                           "enabled": true,
+                           "retentionPolicy": {
+                             "enabled": false,
+                             "days": 0
+                           }
+                         }
+                       ]'
+                       --metrics '[
+                         {
+                           "category": "WorkflowRuntime",
+                           "enabled": true,
+                           "retentionPolicy": {
+                             "enabled": false,
+                             "days": 0
+                           }
+                         }
+                       ]'
             """
 helps['monitor diagnostic-settings update'] = """
             type: command
@@ -846,7 +885,7 @@ helps['monitor activity-log list'] = """
             provided, then --offset will be ignored.
     examples:
         - name: List all events from July 1st, looking forward one week.
-          text: az monitor activity-log list --start-date 2018-07-01 --offset 7d
+          text: az monitor activity-log list --start-time 2018-07-01 --offset 7d
         - name: List events within the past six hours based on a correlation ID.
           text: az monitor activity-log list --correlation-id b5eac9d2-e829-4c9a-9efb-586d19417c5f
         - name: List events within the past hour based on resource group.

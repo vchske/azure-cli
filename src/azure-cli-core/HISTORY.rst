@@ -2,6 +2,49 @@
 
 Release History
 ===============
+2.0.59
+++++++
+* Fix issue where in some instances using `--subscription NAME` would throw an exception.
+
+2.0.58
+++++++
+* `az --version` now displays a notification if you have packages that can be updated.
+* Fixes regression where `--ids` could no longer be used with JSON output.
+
+2.0.57
+++++++
+* Hot fix for issue 8399_.
+
+.. _8399: https://github.com/Azure/azure-cli/issues/8399
+
+2.0.56
+++++++
+* auth: enable tenant level account for managed service identity
+
+2.0.55
+++++++
+* `--output`: Introduce 'none' as an output format option.
+
+2.0.54
+++++++
+* Minor fixes
+
+2.0.53
+++++++
+* Minor fixes
+
+2.0.52
+++++++
+* core: support cross tenant resource provisioning for multi-tenant service principal
+* Fix bug where ids piped from a command with tsv output is improperly parsed.
+
+2.0.51
+++++++
+* msi login: do not reuse subscription name for identity info
+
+2.0.50
+++++++
+* auth: support service principal sn+issuer auth
 
 2.0.49
 ++++++

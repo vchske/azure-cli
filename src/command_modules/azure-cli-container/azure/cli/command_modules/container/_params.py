@@ -64,7 +64,7 @@ def load_arguments(self, _):
     with self.argument_context('container create') as c:
         c.argument('location', arg_type=get_location_type(self.cli_ctx), validator=get_default_location_from_resource_group)
         c.argument('image', validator=validate_image, help='The container image name')
-        c.argument('cpu', type=int, help='The required number of CPU cores of the containers, accurate to one decimal place')
+        c.argument('cpu', type=float, help='The required number of CPU cores of the containers, accurate to one decimal place')
         c.argument('memory', type=float, help='The required memory of the containers in GB, accurate to one decimal place')
         c.argument('os_type', arg_type=get_enum_type(OperatingSystemTypes), help='The OS type of the containers')
         c.argument('ip_address', arg_type=get_enum_type(IP_ADDRESS_TYPES), help='The IP address type of the container group')
@@ -83,7 +83,6 @@ def load_arguments(self, _):
         c.argument('assign_identity', nargs='*', validator=validate_msi, help="Space-separated list of assigned identities. Assigned identities are either user assigned identities (resource IDs) and / or the system assigned identity ('[system]'). See examples for more info.")
         c.argument('identity_scope', options_list=['--scope'], help="Scope that the system assigned identity can access")
         c.argument('identity_role', options_list=['--role'], help="Role name or id the system assigned identity will have")
-        c.ignore('identity_role_id')
 
     with self.argument_context('container create', arg_group='Network') as c:
         c.argument('network_profile', network_profile_type)
