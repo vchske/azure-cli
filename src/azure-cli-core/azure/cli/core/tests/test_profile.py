@@ -6,6 +6,7 @@
 # pylint: disable=protected-access
 import json
 import os
+import sys
 import unittest
 import mock
 import re
@@ -105,6 +106,21 @@ class TestProfile(unittest.TestCase):
         self.assertEqual(expected, consolidated[0])
         # verify serialization works
         self.assertIsNotNone(json.dumps(consolidated[0]))
+
+    def test_normalize_with_unicode_in_subscription_name(self):
+        cli = DummyCli()
+        storage_mock = {'subscriptions': None}
+        test_display_name = 'sub' + chr(255)
+        polished_display_name = 'sub?'
+        test_subscription = SubscriptionStub('sub1',
+                                             test_display_name,
+                                             SubscriptionState.enabled,
+                                             'tenant1')
+        profile = Profile(cli_ctx=cli, storage=storage_mock, use_global_creds_cache=False, async_persist=False)
+        consolidated = profile._normalize_properties(self.user1,
+                                                     [test_subscription],
+                                                     False)
+        self.assertTrue(consolidated[0]['name'] in [polished_display_name, test_display_name])
 
     def test_update_add_two_different_subscriptions(self):
         cli = DummyCli()
@@ -255,7 +271,7 @@ class TestProfile(unittest.TestCase):
         cli.cloud.endpoints.resource_manager = 'http://foo_arm'
         finder = SubscriptionFinder(cli, None, None, arm_client_factory=None)
         result = finder._arm_client_factory(mock.MagicMock())
-        self.assertEquals(result.config.base_url, 'http://foo_arm')
+        self.assertEqual(result.config.base_url, 'http://foo_arm')
 
     @mock.patch('adal.AuthenticationContext', autospec=True)
     def test_get_auth_info_for_logged_in_service_principal(self, mock_auth_context):
@@ -317,13 +333,13 @@ class TestProfile(unittest.TestCase):
                                                      use_device_code=False,
                                                      allow_no_subscriptions=True,
                                                      subscription_finder=finder)
-
         # assert
         self.assertEqual(1, len(result))
         self.assertEqual(result[0]['id'], self.tenant_id)
         self.assertEqual(result[0]['state'], 'Enabled')
         self.assertEqual(result[0]['tenantId'], self.tenant_id)
         self.assertEqual(result[0]['name'], 'N/A(tenant level account)')
+        self.assertTrue(profile.is_tenant_level_account())
 
     @mock.patch('adal.AuthenticationContext', autospec=True)
     def test_create_account_without_subscriptions_thru_common_tenant(self, mock_auth_context):

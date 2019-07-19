@@ -63,9 +63,16 @@ def faulty_help_example_parameters_rule(linter, help_entry):
     violations = []
 
     for example in linter.get_help_entry_examples(help_entry):
-        max_profile = example.get('max_profile')
-        if max_profile and max_profile != 'latest':
-            logger.warning("\n\tSKIPPING example: {}\n\tas its max profile is {}, instead of latest.".format(example['text'], example['max_profile']))
+        supported_profiles = example.get('supported-profiles')
+        if supported_profiles and 'latest' not in supported_profiles:
+            logger.warning("\n\tSKIPPING example: {}\n\tas 'latest' is not in its supported profiles."
+                           "\n\t\tsupported-profiles: {}.".format(example['text'], example['supported-profiles']))
+            continue
+
+        unsupported_profiles = example.get('unsupported-profiles')
+        if unsupported_profiles and 'latest' in unsupported_profiles:
+            logger.warning("\n\tSKIPPING example: {}\n\tas 'latest' is in its unsupported profiles."
+                           "\n\t\tunsupported-profiles: {}.".format(example['text'], example['unsupported-profiles']))
             continue
 
         example_text = example.get('text','')
@@ -124,8 +131,28 @@ def _lint_example_command(command, parser, mocked_error_method, mocked_get_value
 def _extract_commands_from_example(example_text):
 
     # fold commands spanning multiple lines into one line. Split commands that use pipes
-    example_text = example_text.replace("\\\n", " ") # wrap escaped newline into one line.
-    example_text = example_text.replace("\\ ", " ")  # remove left over escape after wrapping
+    # handle single and double quotes properly
+    lines = example_text.splitlines()
+    example_text = ""
+    quote = None
+    for line in lines:
+        for ch in line:
+            if quote is None:
+                if ch == '"' or ch == "'":
+                    quote = ch
+            elif ch == quote:
+                quote = None
+        if quote is None and line.endswith("\\"):
+            # attach this line with removed '\' and no '\n' (space at the end to keep consistent with initial algorithm)
+            example_text += line[0:-1] + " "
+        elif quote is not None:
+            # attach this line without '\n'
+            example_text += line
+        else:
+            # attach this line with '\n' as no quote and no continuation
+            example_text += line + "\n"
+    # this is also for consistency with original algorithm
+    example_text = example_text.replace("\\ ", " ")
 
     commands = example_text.splitlines()
     processed_commands = []

@@ -16,13 +16,13 @@ from copy import deepcopy
 from enum import Enum
 from six.moves import BaseHTTPServer
 
-from knack.log import get_logger
-from knack.util import CLIError
-
 from azure.cli.core._environment import get_config_dir
 from azure.cli.core._session import ACCOUNT
 from azure.cli.core.util import get_file_json, in_cloud_console, open_page_in_browser, can_launch_browser
 from azure.cli.core.cloud import get_active_cloud, set_cloud_subscription
+
+from knack.log import get_logger
+from knack.util import CLIError
 
 logger = get_logger(__name__)
 
@@ -235,11 +235,18 @@ class Profile(object):
 
     def _normalize_properties(self, user, subscriptions, is_service_principal, cert_sn_issuer_auth=None,
                               user_assigned_identity_id=None):
+        import sys
         consolidated = []
         for s in subscriptions:
+            display_name = s.display_name
+            try:
+                s.display_name.encode(sys.getdefaultencoding())
+            except (UnicodeEncodeError, UnicodeDecodeError):  # mainly for Python 2.7 with ascii as the default encoding
+                display_name = re.sub(r'[^\x00-\x7f]', lambda x: '?', display_name)
+
             consolidated.append({
                 _SUBSCRIPTION_ID: s.id.rpartition('/')[2],
-                _SUBSCRIPTION_NAME: s.display_name,
+                _SUBSCRIPTION_NAME: display_name,
                 _STATE: s.state.value,
                 _USER_ENTITY: {
                     _USER_NAME: user,
@@ -249,6 +256,7 @@ class Profile(object):
                 _TENANT_ID: s.tenant_id,
                 _ENVIRONMENT_NAME: self.cli_ctx.cloud.name
             })
+
             if cert_sn_issuer_auth:
                 consolidated[-1][_USER_ENTITY][_SERVICE_PRINCIPAL_CERT_SN_ISSUER_AUTH] = True
             if user_assigned_identity_id:
@@ -418,6 +426,9 @@ class Profile(object):
         s = next((x for x in subscriptions if x.get(_STATE) == SubscriptionState.enabled.value), None)
         return s or subscriptions[0]
 
+    def is_tenant_level_account(self):
+        return self.get_subscription()[_SUBSCRIPTION_NAME] == _TENANT_LEVEL_ACCOUNT_NAME
+
     def set_active_subscription(self, subscription):  # take id or name
         subscriptions = self.load_cached_subscriptions(all_clouds=True)
         active_cloud = self.cli_ctx.cloud
@@ -479,9 +490,9 @@ class Profile(object):
         if not result and subscription:
             raise CLIError("Subscription '{}' not found. "
                            "Check the spelling and casing and try again.".format(subscription))
-        elif not result and not subscription:
+        if not result and not subscription:
             raise CLIError("No subscription found. Run 'az account set' to select a subscription.")
-        elif len(result) > 1:
+        if len(result) > 1:
             raise CLIError("Multiple subscriptions with the name '{}' found. "
                            "Specify the subscription ID.".format(subscription))
         return result[0]
@@ -1068,7 +1079,7 @@ class ClientRedirectHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.wfile.write(html_file.read())
 
     def log_message(self, format, *args):  # pylint: disable=redefined-builtin,unused-argument,no-self-use
-        return  # this prevent http server from dumping messages to stdout
+        pass  # this prevent http server from dumping messages to stdout
 
 
 def _get_authorization_code_worker(authority_url, resource, results):

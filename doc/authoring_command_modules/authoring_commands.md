@@ -36,6 +36,10 @@ The document provides instructions and guidelines on how to author individual co
 
 [16. Deprecating Commands and Arguments](#deprecating-commands-and-arguments)
 
+[17. Multi-API Aware Modules](#multi-api-aware-modules)
+
+[18. Preview Commands and Arguments](#preview-commands-and-arguments)
+
 Authoring Commands
 =============================
 
@@ -48,9 +52,11 @@ class MyCommandsLoader(AzCommandsLoader):
 
     def __init__(self, cli_ctx=None):
         from azure.cli.core.sdk.util import CliCommandType
+        from azure.cli.core.profiles._shared import MGMT_MYTYPE
         mymod_custom = CliCommandType(operations_tmpl='azure.cli.command_modules.mymod.custom#{}')
+
         super(MyCommandsLoader, self).__init__(cli_ctx=cli_ctx,
-                                               min_profile='2017-03-10-profile',
+                                               resource_type=MGMT_MYTYPE,
                                                custom_command_type=mymod_custom)
 
     def load_command_table(self, args):
@@ -63,6 +69,15 @@ class MyCommandsLoader(AzCommandsLoader):
         # TODO: Register argument contexts and arguments here
 
 COMMAND_LOADER_CLS = MyCommandsLoader
+```
+
+Note that `MGMT_MYTYPE` will need to be added to the `azure\cli\core\profiles\_shared.py` file. See [Multi-API Aware Modules](#multi-api-aware-modules)
+
+```Python
+class ResourceType(Enum):  # pylint: disable=too-few-public-methods
+    ...
+    MGMT_MYTYPE = ('azure.mgmt.mytype', 'MyTypeManagmenentClient')
+    ...
 ```
 
 ## Write a Command
@@ -142,7 +157,7 @@ The signature for `custom_command` is exactly the same as `command`. The only di
 
 ***generic_update_command***
 
-See the section on "Suppporting Generic Update"
+See the section on [Generic Update Commands](#generic-update-commands)
 
 ***wait_command***
 
@@ -227,6 +242,31 @@ with self.command_group('mymod', mymod_sdk) as g:
     g.generic_update_command('update', supports_no_wait=True)
 ```
 
+**(5) Supporting --defer**
+
+When registering a command, the boolean `supports_local_cache` property can be used to specify that the command supports `--defer`. This will allow traditional GET and PUT requests to interact with the CLI's local object cache instead of making
+calls on the wire either for performance reasons (to avoid network latency) or because the service will only accept a payload constructed from many calls.
+
+See [Commands With Complex Types](https://github.com/Azure/azure-cli/blob/dev/doc/command_guidelines.md#commands-with-complex-types)
+
+Here are examples:
+
+***custom_command()***
+
+```Python
+# inside load_command_table(...)
+with self.command_group('mymod', mymod_sdk) as g:
+    g.custom_command('command2', 'do_something_2', supports_local_cache=True)
+
+# inside custom.py
+def do_something_2(cmd, client, arg1, arg2, no_wait=False):
+    from azure.cli.core.commands import cached_get, cached_put
+    item = cached_get(cmd, client.get, arg1, arg2)
+    # TODO: perform some mutation of item
+    return cached_put(cmd, client.create_or_update, arg1, arg2, item)
+```
+
+Cached objects are deleted upon a successful PUT and can be view and managed using the `az cache` commands.
 
 ## Write Help Entry
 
@@ -295,18 +335,6 @@ extra(self, dest, arg_type=None, **kwargs)
 ```
 Arguments are the same as `argument`, however this will create a new parameter whereas `argument` will not. This is useful when a reflected SDK method is missing a parameter that you need to expose in your command.
 
-***expand***
-```Python
-expand(self, dest, model_type, group_name=None, patches=None):
-```
-
-Often reflected SDK methods have complex parameters that are difficult to expose directly. The `expand` method offers one way to expose these methods without resorting to a custom command approach.
-
-- `dest` -  The name of the parameter that will be expanded.
-- `model_type` - The model type which will be expanded and collapsed back into the `dest` value.
-- `group_name` - The argument group to which the expand parameters will be assigned. (See arg_group kwarg)
-- `patches` - A list of patches to apply to the expanded parameters.
-
 Additional Topics
 =============================
 
@@ -324,14 +352,6 @@ While kwargs are inherited from higher levels on the diagram, they can be overri
 
 Addtionally, you can see that kwargs registered on a command group *do not* carry over to argument contexts, so you must apply the kwargs in both places if necessary.
 
-****Commands Loader****
-
-_Special Kwargs_
-
-The following special kwargs are only interpretted by the command loader:
-- `min_profile` - Minimum profile which the module supports. If an older profile is used, the module will not be loaded.
-- `max_profile` - Maximum profile which the module supports. If a newer profile is used, the module will not be loaded.
-
 ****Command Group****
 
 _Special Kwargs_
@@ -341,10 +361,11 @@ The following special kwargs are supported by command group and its helper metho
 - `validator` - See section on [Validators](#validators)
 - `confirmation` - During interactive use, will prompt the user to confirm their choice to proceed. Supply a value of True to use the default prompt, or supply a string to use a custom prompt message. If the command is invoked in non-interactive scenarios and the --yes/-y parameter is not supplied, the command will fail.
 - `transform` - Accepts a callable that takes a command result, which can be manipulated as desired. The transformed result is then returned. In general, output formats should closely mirror those returned by the service, and so this should be infrequently used. The modifies the output *regardless of the output format type*.
-- `deprecate_info` - Accepts a string which will be displayed whenever the command is invoked. Used to display deprecation warnings.
+- `deprecate_info` - See [Deprecating Commands and Arugments](https://github.com/Azure/azure-cli/blob/dev/doc/authoring_command_modules/authoring_commands.md#deprecating-commands-and-arguments)
 - `formatter_class` - Advanced. Accepts a custom class that derives from `argparse.HelpFormatter` to modify the help document generation.
 - `argument_loader` - Advanced. Accepts a callable that takes no parameters which will be used in place of the default argument loader.
 - `description_loader` - Advanced. Accepts a callable that takes no parameters which will be used in place of the default description loader.
+- `is_preview` - See [Preview Commands and Arguments](https://github.com/Azure/azure-cli/blob/dev/doc/authoring_command_modules/authoring_commands.md#preview-commands-and-arguments)
 
 _General Kwargs_
 
@@ -366,6 +387,7 @@ The follow special kwargs are supported by argument context and its helper metho
 - `completer` - See section on [Tab Completion](#tab-completion)
 - `id_part` - See section on [Supporting the IDs Parameter](#supporting-the-ids-parameter).
 - `arg_group` - Groups arguments within this context under a group name or add an argument to the group. This group name is shown in the help for the command. For example if `arg_group` is "Network", all applicable arguments will be grouped under the heading "Network Arguments" in the help text for the command.
+- `is_preview` - See [Preview Commands and Arguments](https://github.com/Azure/azure-cli/blob/dev/doc/authoring_command_modules/authoring_commands.md#preview-commands-and-arguments)
 
 Additionally, the following `kwargs`, supported by argparse, are supported as well:
 - `nargs` - See https://docs.python.org/3/library/argparse.html#nargs
@@ -560,10 +582,10 @@ However, most commonly, the `custom_func_name` and `custom_func_type` kwargs wil
 
 **Working With Child Collections and Properties (Advanced)**
 
-Sometimes you will want to write commands that operate on child resources and it may be that these child resources don't have dedicated getters and setters. In these cases, you must rely on the getter and setter of the parent resource. For these cases, `generic_update_command` has three additional parameters:
-  - `child_collection_prop_name` - the name of the child collection property. For example, if object `my_parent` has a child collection called `my_children` that you would access using `my_parent.my_children` then the name you would use is 'my_children'.
-  - `child_collection_key_name` - Most child collections in Azure are lists of objects (as opposed to dictionaries) which will have a property in them that serves as the key. This is the name of that key property. By default it is 'name'. In the above example, if an entry in the `my_children` collection has a key property called `my_identifier` then the value you would supply is 'my_identifier'.
-  - `child_arg_name` - If you want to refer the child object key (the property identified by `child_collection_key_name`) inside a custom function, you should specify the argument name you use in your custom function. By default, this is called `item_name`. In the above example, where our child object had a key called `my_identifier`, you could refer to this property within your custom function through the `item_name` property, or specify something different.
+Sometimes you will want to write commands that operate on child resources and it may be that these child resources don't have dedicated getters and setters. In these cases, you must rely on the getter and setter of the parent resource. For example, consider an object `my_parent` which has a child collection `my_child` which in turn has its own child collection `my_grandchild`. The key property for all of these objects is simply `name`. For these cases, `generic_update_command` has three additional parameters:
+  - `child_collection_prop_name` - the name path to the child collection property, using dot syntax. To access `my_child`, the value would be `my_child`. To access `my_grandchild`, the value would be `my_child.my_grandchild`.
+  - `child_collection_key` - Most child collections in Azure are lists of objects (as opposed to dictionaries) which will have a property in them that serves as the key. This is the name of that key property. By default it is `name`. To refer to `my_child`, the value would be `name`. To refer to `my_grandchild` the value would be `name.name`.
+  - `child_arg_name` - If you want to refer the child object key (the property identified by `child_collection_key`) inside a custom function, you should specify the argument name you use in your custom function. By default, this is called `item_name`. In the above example, where our child object had a key called `name`, you could refer to this property within your custom function through the `item_name` property, or specify something different. For grandchild collections, use dot syntax (i.e.: `child_name.grandchild_name`).
 
 **Logic Flow**
 
@@ -805,3 +827,126 @@ with self.argument_context('test show-parameters') as c:
 ```
 
 This will deprecate the argument `--resource-id` option on `test show-parameters` in favor of `--resource`. Note that call to `c.deprecate`, calling the deprecate helper method off of the argument context. The warning message for this would read: ```Option `--resource-id` has been deprecated and will be removed in a future release. Use `--resource` instead.``` Here you must specify `target` in order to identify the deprecated option. When an option value is deprecated, it appears in help as two separate arguments, with the deprecation warning on the deprecated option. 
+
+## Multi-API Aware Modules
+To convert a module that used a mono-versioned SDK to one that works with multiple API versions:
+
+1. In `azure.cli.core.profiles._shared.py` register your SDK and client in the `ResourceType` enum:
+
+```Python
+class ResourceType(Enum):
+
+  MGMT_MYSERVICE = ('azure.mgmt.myservice, MyServiceManagementClient')  # REGISTER YOUR SDK
+  ...
+```
+
+
+2. In the `AZURE_API_PROFILES` dictionary in that same file, for each profile your service applies to, add an entry for it like this:
+
+```Python
+AZURE_API_PROFILES = {
+  'latest': {
+    ResourceType.MGMT_MYSERVICE: '2019-03-01' # the supported API version on that profile
+    ...
+  },
+  '2019-03-01-hybrid': {
+    ResourceType.MGMT_MYSERVICE: '2018-08-01' # different API version for this profile
+    ...
+  },
+  ...
+}
+```
+
+3. Update imports in your files. They must use the API profile-aware "get_models" method and have access to a command or CLI object.
+
+Example:
+```Python
+from azure.mgmt.myservice import Foo, Boo
+
+def my_command(...):
+   # do stuff
+```
+
+Converted:
+```Python
+def my_command(cmd, ...):
+  Foo, Boo = cmd.get_models('Foo', 'Boo')
+  # do stuff
+```
+
+4. Use appropriate conditionals to ensure your command can run on all supported profiles:
+
+***commands.py***
+
+```Python
+with self.command_group('test') as g:
+  g.command('use-new-feature', 'use_new_feature', min_api='2018-03-01')  # won't be available unless min API is met
+```
+
+***params.py***
+
+```Python
+with self.argument_context('test create') as c:
+  c.argument('enable_new_feature', min_api='2018-03-01', arg_type=get_three_state_flag())  # expose argument only when min API is satisfied
+```
+
+***custom.py***
+
+```Python
+def my_test_command(cmd, ...):
+  Foo = cmd.get_models('Foo')
+  my_foo = Foo(...)
+  
+  # will still work with older API versions because this branch will be skipped
+  if cmd.supported_api_version(min_api='2018-03-01'):
+    my_foo.enable_new_feature = enable_new_feature
+
+  return client.create_or_update(..., my_foo)
+```
+
+See earlier topics for other kwargs that can be used with multi-API idioms.
+
+## Preview Commands and Arguments
+
+The CLI has built-in support for marking commands, command groups and arguments as being in "preview" status. Preview items will appear with a warning in the help system or when invoked. Items marked preview can be changed, broken or removed at any time without following the deprecation process. 
+
+**Note that ANYTHING not marked "preview" is considered GA and thus a breaking change can only be enacted by following the deprecation mechanism (see earlier topic).**
+
+Items are marked Preview using the `is_preview=True` kwarg. See the following for examples:
+
+***Preview Command Group***
+```Python
+with self.command_group('test', test_sdk, is_preview=True) as g:
+  g.show_command('show', 'get')
+  ...
+```
+
+Additionally, since the command group is in preview then, by extension, all of the commands and arguments within it are in preview as well. No message will be displayed for implicitly in-preview arguments, but a warning will be displayed for implicitly in-preview commands.
+
+***Preview Command***
+```Python
+with self.command_group('test', test_sdk) as g:
+  g.command('show-parameters', 'get_params', is_preview=True)
+```
+
+This will declare just the command `test show-parameters` as being in preview. This command will appear with the `[Preview]` status tag when viewed in group help whereas other commands in the `test` group will not, indicating that only this command (and, by implication, its arguments) are in preview status.
+
+***Preview Argument***
+```Python
+with self.argument_context('test show-parameters') as c:
+  c.argument('cool_flag', help='Something cool new flag.', is_preview=True)
+```
+
+This will mark the argument `--cool-flag` on `test show-parameters` as being in preview, appearing with the `[Preview]` tag.
+
+***Preview Extensions***
+
+Extensions are marked as being in preview using an older mechanism in the `azext_metadata.json` file.
+
+```
+{
+    "azext.isPreview": true,
+}
+```
+
+It is recommended that, if an extension is in preview, that it also uses the above mechanisms to give the same level of visibility to in preview items.

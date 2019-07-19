@@ -86,7 +86,7 @@ For clarity, Bash scripts are used inline. Windows batch or PowerScript examples
   1. If the value contains whitespace, you must wrap it in quotes.
   2. In bash or Windows PowerShell, both single and double quotes will be intepreted, while in Windows command prompt, only double quotes are handled which means single quotes will be interpreted as a part of the value.
   3. If your command only runs on bash (or zsh), using single quotes has the benefit of preserving the content inside. This can be very helpful when supplying inline JSON. For example this works in bash: `'{"foo": "bar"}'`
-  4. If your command will run on Windows command prompt, you must use double quotes exclusively. If the value contains double quotes, you must escape it: "i like to use \\" a lot". The coimmand propmpt equivalent of the above would be: `"{\"foo\": \"bar\"}"
+  4. If your command will run on Windows command prompt, you must use double quotes exclusively. If the value contains double quotes, you must escape it: "i like to use \\" a lot". The command prompt equivalent of the above would be: `"{\"foo\": \"bar\"}"`
   5. Exported variables in bash inside double quotes will be evaluated. If this is not what you want, again use \\ to escape it like `"\\$var"` or use single quotes `'$var'`. 
   5. A few CLI arguments, including the generic update arguments, take a list of space-separated values, like `<key1>=<value1> <key2>=<value2>`. Since the key name and value can take arbitary string which might contain whitespace, using quotes will be necessary. Wrap the pair, not individual key or value. So `"my name"=john` is wrong. Instead, use `"my name=john"`. For example:
          az webapp config appsettings set -g my_rg -n my_web --settings "client id=id1" "my name=john"
@@ -110,6 +110,10 @@ For clarity, Bash scripts are used inline. Windows batch or PowerScript examples
   A frequent ask is whether or not `HTTP_PROXY` or `HTTPS_PROXY` envionment variables should be set, the answer is it depends. For fiddler on Windows, by default it acts as system proxy on start, you don't need to set anything. If the option is off or using other tools which don't work as system proxy, you should set them. Since almost all traffics from CLI are SSL based, so only `HTTPS_PROXY` should be set. If you are not sure, just set them, but do remember to unset it after the proxy is shut down. For fiddler, the default value is `http://localhost:8888`.
 
   For other details, check out [Stefan's blog](https://blog.jhnr.ch/2018/05/16/working-with-azure-cli-behind-ssl-intercepting-proxy-server/).
+
+## Concurrent builds
+
+If you are using az on a build machine, and multiple jobs can be run in parallel, then there is a risk that the login tokens are shared between two build jobs is the jobs run as the same OS user.  To avoid mix ups like this, set AZURE_CONFIG_DIR to a directory where the login tokens should be stored.  It could be a randomly created folder, or just the name of the jenkins workspace, like this ```AZURE_CONFIG_DIR=.```
 
 ## Appendix
    ### Windows batch scripts for saving to variables and using it later 
